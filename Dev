@@ -1,0 +1,978 @@
+#!/bin/bash
+
+# todo: use timeout to kill apt update after some time
+
+red=`tput setaf 1`
+green=`tput setaf 2`
+cyan=`tput setaf 6`
+magenta=`tput setaf 5`
+yellow=`tput setaf 3`
+reset=`tput sgr0`
+
+Check="\xE2\x9C\x94"
+
+function Success()
+{
+    echo -e "${green}$*${reset}" | column -t -s ';'
+}
+
+function Info()
+{
+    echo "${cyan}$*${reset}"
+}
+
+function Warning()
+{
+    echo "${yellow}$*${reset}"
+}
+
+function Error()
+{
+    echo "${red}$*${reset}"
+}
+
+function Divide()
+{
+    echo ""
+    echo "${magenta}----------${reset}"
+    echo ""
+}
+
+function IsFullStackDeveloper()
+{
+    if [[ "$DeveloperRole" == "FullStack" ]]; then
+        return 0;
+    fi
+    return 1;
+}
+
+function InstallVpn()
+{
+    if [ ! -f /LocalSecrets/Vpn ]; then
+        sudo mkdir /LocalSecrets
+        sudo chmod 777 --preserve-root /LocalSecrets
+        Divide
+        Info Please enter your VPN username
+        Divide
+        read Username
+        Divide
+        Info Please enter your VPN password
+        Divide
+        read Password
+        Divide
+        echo $Username > /LocalSecrets/Vpn
+        echo $Password >> /LocalSecrets/Vpn
+        sudo chmod 777 --preserve-root /LocalSecrets/Vpn
+    fi
+
+    if ( which piactl 1>/dev/null ); then
+        Success "Private Internet Access;$Check"
+    else
+        Info "Installing Private Internet Access ..."
+
+        wget https://holism.blob.core.windows.net/downloads/pia.zip -O /Temp/pia.zip
+        sudo unzip /Temp/pia.zip
+        sudo chmod 777 --preserve-root /Temp/pia-linux-3.3.1-06924.run
+        sh /Temp/pia-linux-3.3.1-06924.run
+        sudo rm -rf /Temp/pia-linux-3.3.1-06924.run
+        sudo rm -rf /Temp/pia-linux.zip
+
+        piactl login /LocalSecrets/Vpn
+
+        Success "Installed Private Internet Access"
+    fi
+}
+
+function InstallChrome()
+{
+    if ( which google-chrome 1>/dev/null ); then
+        Success "Chrome;$Check"
+        return
+    fi
+
+    Info "Installing Google Chrome ..."
+
+    sudo apt-get update
+    #sudo apt upgrade
+    wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O chrome
+
+    sudo dpkg -i chrome
+
+    Success "Installed Google Chrome"
+}
+
+function InstallVsCode()
+{
+    if ( which code 1>/dev/null ); then
+        Success "VS Code;$Check"
+        return
+    fi
+
+    Info "Installing VS Code ..."
+
+    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+    sudo install -o root -g root -m 644 packages.microsoft.gpg /etc/apt/trusted.gpg.d/
+    sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/trusted.gpg.d/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+    rm -f packages.microsoft.gpg
+
+    sudo apt install apt-transport-https
+    sudo apt update
+    sudo apt install code -y
+
+    Success "Installed VS Code"
+}
+
+function InstallVsCodeExtensionRemoteContainers()
+{
+    if code --list-extensions | grep -q 'ms-vscode-remote.remote-containers'; then
+        code --install-extension ms-vscode-remote.remote-containers --force 2>&1 >/dev/null
+        Success "Remote Containers Extension;$Check"
+        return
+    fi
+
+    Info "Installing Remote Containers Extension..."
+
+    code --install-extension ms-vscode-remote.remote-containers
+
+    Success "Installed Remote Containers Extension"
+}
+
+function InstallVsCodeExtensionCodeSpellChecker()
+{
+    if code --list-extensions | grep -q 'streetsidesoftware.code-spell-checker'; then
+        code --install-extension streetsidesoftware.code-spell-checker --force 2>&1 >/dev/null
+        Success "Code Spell Checker Extension;$Check"
+        return
+    fi
+
+    Info "Installing Code Spell Checker Extension..."
+
+    code --install-extension streetsidesoftware.code-spell-checker
+
+    Success "Installed Code Spell Checker Extension"
+}
+
+function InstallAzureDataStudio()
+{
+    if ( which azuredatastudio 1>/dev/null ); then
+        Success "Azure Data Studio;$Check"
+        return
+    fi
+
+    Info "Installing Azure Data Studio ..."
+
+    if [ -f /media/$USER/Repository/Files/ads.deb ]; then
+        sudo cp /media/$USER/Repository/Files/ads.deb /Temp
+    else
+        wget https://go.microsoft.com/fwlink/?linkid=2251736
+        mv index.html\?linkid\=2251736 /Temp/ads.deb
+    fi
+
+    sudo apt install /Temp/ads.deb -y
+    # If not connecting => [update OpenSSL](https://github.com/microsoft/azuredatastudio/issues/13457#issuecomment-832202549)
+    rm -rf /Temp/ads.deb
+
+    Success "Installed Azure Data Studio"
+}
+
+function InstallGit()
+{
+    if ( which git 1>/dev/null ); then
+        Success "Git;$Check"
+        return
+    fi
+
+    Info "Installing Git ..."
+
+    sudo apt-get install git -y
+    git config --global init.defaultBranch main
+
+    Success "Installed Git"
+}
+
+function InstallDocker()
+{
+    if ( which docker 1>/dev/null ); then
+        Success "Docker;$Check"
+        return
+    fi
+
+    Info "Installing Docker ..."
+
+    sudo apt-get update
+
+    sudo apt-get install \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release -y
+
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+    echo \
+    "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    sudo apt-get update
+    sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+    sudo docker run hello-world
+
+    # sudo gpasswd -a $USER docker
+    # newgrp docker
+    # sudo groupadd docker
+    # sudo usermod -aG docker ${USER}
+    # sudo usermod -aG docker $USER
+
+    Success "Installed Docker"
+}
+
+function InstallDockerCompose()
+{
+    if ( which docker-compose 1>/dev/null ); then
+        Success "Docker compose;$Check"
+        return
+    fi
+
+    Info "Installing Docker Compose ..."
+
+    sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+    sudo chmod +x --preserve-root /usr/local/bin/docker-compose
+    docker-compose --version
+
+    Success "Installed Docker Compose"
+}
+
+function InstallAnydesk()
+{
+    if ( which anydesk 1>/dev/null ); then
+        Success "Anydesk;$Check"
+        return
+    fi
+
+    Info "Installing AnyDesk ..."
+
+    wget -qO - https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo apt-key add -
+    echo "deb http://deb.anydesk.com/ all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list
+    sudo apt update
+    sudo apt install anydesk -y
+
+    Success "Installed AnyDesk"
+}
+
+function InstallScreenRecorder()
+{
+   if ( which simplescreenrecorder 1>/dev/null ); then
+        Success "simplescreenrecorder;$Check"
+        return
+    fi
+
+    Info "Installing simplescreenrecorder ..."
+
+    sudo apt update
+    sudo apt install simplescreenrecorder -y
+
+    Success "Installed simplescreenrecorder"
+}
+
+function InstallNginx()
+{
+    if ( which nginx 1>/dev/null ); then
+        Success "Nginx;$Check"
+        return
+    fi
+
+    Info "Installing Nginx ..."
+
+    sudo apt install nginx -y
+    sudo nginx -v
+
+    Success "Installed Nginx"
+}
+
+function InstallMkcert()
+{
+    if ( which mkcert 1>/dev/null ); then
+        mkcert -install 2>/dev/null
+        Success "Mkcert;$Check"
+        return
+    fi
+
+    Info "Installing Mkcert ..."
+
+    sudo apt install libnss3-tools
+    wget https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64 -O mkcert
+    sudo cp mkcert /usr/local/bin/mkcert
+    sudo chmod +x --preserve-root /usr/local/bin/mkcert
+    mkcert -install
+
+    Success "Installed Mkcert"
+}
+
+function InstallMicro()
+{
+    if ( which micro 1>/dev/null ); then
+        Success "Micro;$Check"
+        return
+    fi
+
+    Info "Installing Micro ..."
+
+    sudo chmod -R 777 --preserve-root /usr/local/bin
+    cd /usr/local/bin
+    sudo curl https://getmic.ro | bash
+
+    Success "Installed Micro"
+}
+
+function InstallTelnet()
+{
+    if ( which telnet 1>/dev/null ); then
+        Success "Telnet;$Check"
+        return
+    fi
+
+    Info "Installing Telnet ..."
+
+    sudo apt-get install telnet -y
+
+    Success "Installed Telnet"
+}
+
+function InstallTrans()
+{
+    if ( which trans 1>/dev/null ); then
+        Success "Trans;$Check"
+        return
+    fi
+
+    Info "Installing Trans ..."
+
+    sudo apt install translate-shell -y
+
+    Success "Installed Trans"
+}
+
+function InstallBeyondCompare()
+{
+    if ( which bcompare 1>/dev/null ); then
+        Success "Beyond Compare;$Check"
+        return
+    fi
+
+    Info "Installing Beyond Compare ..."
+
+    wget https://www.scootersoftware.com/files/bcompare-4.4.7.28397_amd64.deb
+    sudo apt update
+    sudo apt install ./bcompare-4.4.7.28397_amd64.deb
+
+    Success "Installed Beyond Compare"
+}
+
+function InstallSshServer()
+{
+    if ( which sshd 1>/dev/null ); then
+        Success "SSH Server;$Check"
+        return;
+    fi
+
+    Info "Installing SSH Server ..."
+
+    sudo apt install openssh-server -y
+
+    Success "Installed SSH Server"
+}
+
+function InstallBashCompletion()
+{
+    grep -wq '^source /etc/profile.d/bash_completion.sh' ~/.bashrc || echo 'source /etc/profile.d/bash_completion.sh'>>~/.bashrc
+    source /etc/profile.d/bash_completion.sh
+    # complete -W 'Suggestion1 Suggestion2 Suggestion3' YourCommand
+
+    if [ -f /etc/profile.d/bash_completion.sh ]; then
+        Success "BashCompletion;$Check"
+        UpdateBashCompletion
+        return;
+    fi
+
+    Info "Installing BashCompletion ..."
+
+    sudo apt install bash-completion -y
+
+    Success "Installed BashCompletion"
+
+    BashCompletionUpdate
+}
+
+function InstallWireshark()
+{
+    # todo: unattended installation
+    # https://askubuntu.com/questions/1275842/install-wireshark-without-confirm
+    if ( which wireshark 1>/dev/null ); then
+        Success "Wireshark;$Check"
+        return;
+    fi
+
+    Info "Installing Wireshark ..."
+
+    sudo apt-get install wireshark -y
+    sudo dpkg-reconfigure wireshark-common
+    sudo usermod -aG wireshark $USER
+
+    Success "Installed Wireshark"
+}
+
+function InstallHttpie()
+{
+    if ( which http 1>/dev/null ); then
+        Success "HTTPie;$Check"
+        return;
+    fi
+
+    Info "Installing HTTPie ..."
+
+    sudo apt install httpie -y
+
+    sudo apt update && sudo apt -y upgrade httpie
+
+    Success "Installed HTTPie"
+}
+
+function InstallPip()
+{
+    if ( which pip 1>/dev/null ); then
+        Success "pip;$Check"
+        return;
+    fi
+
+    Info "Installing pip ..."
+
+    sudo apt install python3-pip -y
+
+    Success "Installed pip"
+}
+
+function InstallInflect()
+{
+    pip install inflect 1>/dev/null
+
+    Success "inflect; $Check"
+}
+
+function InstallHump()
+{
+    pip install pyhumps 1>/dev/null
+
+    Success "pyhumps; $Check"
+}
+
+function InstallJq()
+{
+    if ( which jq 1>/dev/null ); then
+        Success "JQ;$Check"
+        return
+    fi
+
+    Info "Installing jq ..."
+
+    sudo apt-get update
+    sudo apt-get install jq -y
+
+    Success "Installed jq"
+}
+
+function InstallCloc()
+{
+    if ( which cloc 1>/dev/null ); then
+        Success "CLOC;$Check"
+        return
+    fi
+
+    Info "Installing cloc ..."
+
+    sudo apt install cloc -y
+
+    Success "Installed cloc"
+}
+
+function InstallProgress()
+{
+    if ( which progress 1>/dev/null ); then
+        Success "Progress;$Check"
+        return
+    fi
+
+    Info "Installing progress ..."
+
+    sudo apt-get update
+    sudo apt-get install progress -y
+
+    Success "Installed progress"
+}
+
+function InstallRename()
+{
+    if ( which rename 1>/dev/null ); then
+        Success "Rename;$Check"
+        return
+    fi
+
+    Info "Installing rename ..."
+
+    sudo apt install rename -y
+
+    Success "Installed rename"
+}
+
+function InstallParallel()
+{
+    if ( which parallel 1>/dev/null ); then
+        Success "Parallel;$Check"
+        return
+    fi
+
+    Info "Installing parallel ..."
+
+    sudo apt install parallel -y
+    ulimit -n `ulimit -Hn`
+
+    Success "Installed parallel"
+}
+
+function InstallBaobab()
+{
+    if ( which baobab 1>/dev/null ); then
+        Success "Baobab;$Check"
+        return
+    fi
+
+    Info "Installing baobab ..."
+
+    sudo apt-get install -y baobab
+
+    Success "Installed baobab"
+}
+
+function InstallDconfEditor()
+{
+    if ( which dconf-editor 1>/dev/null ); then
+        Success "DconfEditor;$Check"
+        return
+    fi
+
+    Info "Installing dconf-editor ..."
+
+    sudo apt-get install -y dconf-editor
+
+    Success "Installed dconf-editor"
+}
+
+function InstallSafeEye()
+{
+    if ( which safeeyes 1>/dev/null ); then
+        Success "SafeEyes;$Check"
+        return
+    fi
+
+    Info "Installing safeeyes ..."
+
+    sudo apt-get install safeeyes -y
+
+    Success "Installed safeeyes"
+}
+
+function InstallWarp()
+{
+    if ( which warp-cli 1>/dev/null ); then
+        Success "Warp;$Check"
+        return
+    fi
+
+    Info "Installing warp-cli ..."
+
+    curl https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
+    sudo apt-get update && sudo apt-get install cloudflare-warp -y
+
+    Success "Installed warp-cli"
+}
+
+function ConfigureDocker()
+{
+    sudo mkdir -p /etc/docker
+    sudo chmod 777 --preserve-root /etc/docker
+
+    sudo bash -c 'echo "{" > /etc/docker/daemon.json'
+    sudo bash -c 'echo " \"registry-mirrors\": [\"https://docker.iranserver.com\", \"https://registry.docker.ir\", \"https://mirror.gcr.io\"]" >> /etc/docker/daemon.json'
+    # sudo echo " \"features\": { \"containerd-snapshotter\": true }" >> /etc/docker/daemon.json
+    sudo bash -c 'echo "}" >> /etc/docker/daemon.json'
+
+    sudo systemctl daemon-reload
+    sudo systemctl restart docker
+
+    # docker system info
+
+    # https://mirror.iranserver.com/docker/
+}
+
+function ConfigureNginx()
+{
+    sudo sed -i 's/#\s*server_names_hash_bucket_size\s*\d+;$/	server_names_hash_bucket_size 512;/g' /etc/nginx/nginx.conf
+
+    Success "Nginx configured"
+}
+
+function RegisterHolismCommands()
+{
+    if ( grep -nr HolismHolding /etc/bash.bashrc 1>/dev/null ); then
+        Success "Holism commands;$Check"
+        return;
+    fi
+
+    Info "Registering Holism Commands ..."
+
+    sudo chmod 777 --preserve-root /etc/bash.bashrc
+    sudo echo 'PATH="${PATH}:/HolismHolding/Commands"' >> /etc/bash.bashrc
+
+    Success "Registered Holism Commands"
+}
+
+function SetDockerPermissions()
+{
+    Info "Setting docker permissions ... "
+
+    sudo gpasswd -a $USER docker
+    newgrp docker
+    sudo groupadd docker
+    sudo usermod -aG docker ${USER}
+    sudo usermod -aG docker $USER
+
+    Success "Set docker permissions"
+}
+
+function DownloadVsCodeExtensions()
+{
+    if [ -f /HolismHolding/Extensions/CSharp.vsix ]; then
+        Success "CSharp extension;$Check"
+    else
+
+        Info "Downloading C# VS Code extension ... "
+
+        sudo mkdir -p /HolismHolding/Extensions
+
+        # wget https://holism.blob.core.windows.net/downloads/CSharp20312.vsix -O CSharp.vsix
+        # sudo mv CSharp.vsix /HolismHolding/Extensions/CSharp.vsix
+
+        find /Temp -maxdepth 1 -name "*vspackage?target*" | xargs rm -rf
+        ua="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1"
+        wget --save-cookies cookies.txt --keep-session-cookies https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.csharp
+        wget -U "$ua" --load-cookies cookies.txt https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-dotnettools/vsextensions/csharp/2.15.30/vspackage?targetPlatform=linux-x64
+        sudo mv vspackage\?targetPlatform\=linux-x64 CSharp.gz
+        # file CSharp.gz
+        sudo gunzip -v CSharp.gz
+        sudo mv CSharp CSharp.vsix
+        sudo mv CSharp.vsix /HolismHolding/Extensions/
+
+        Success "Downloaded C# VS Code extension "
+
+    fi
+}
+
+function GiveAccessToRoot()
+{
+    if [ -f ~/.ssh/id_ed25519 ]; then
+        sudo mkdir -p /root/.ssh
+        sudo ln -f -s ~/.ssh/id_ed25519 /root/.ssh/id_ed25519
+        sudo ln -f -s ~/.ssh/id_ed25519.pub /root/.ssh/id_ed25519.pub
+        sudo ln -f -s ~/.ssh/known_hosts /root/.ssh/known_hosts
+    fi
+}
+
+function TestGitHubAccess()
+{
+    if [[ $(ssh -T git@github.com) == *"You've successfully authenticated"* ]]; then
+        Success "GitHub SSH;$Check"
+    else
+        Error "GitHub SSH not valid"
+    fi
+}
+
+function AddPersianInputSource()
+{
+    if [[ $( gsettings get org.gnome.desktop.input-sources sources | grep ir ) ]]; then
+        Success "Persian;$Check"
+        return;
+    fi
+
+    Info "Adding Persian ..."
+
+    gsettings set org.gnome.desktop.input-sources sources "[('xkb', 'us'), ('xkb', 'ir')]"
+
+    Success "Added Persian"
+}
+
+function SetLocaleToEnglishUs()
+{
+    if [[ $( locale | grep LANG=en_US.UTF-8 ) ]] && [[ $( gsettings get org.gnome.system.locale region ) == 'en_US.UTF-8' ]]; then
+        Success "US English locale;$Check"
+        return;
+    fi
+
+    sudo update-locale LANG=en_US.UTF-8
+    gsettings set org.gnome.system.locale region 'en_US.UTF-8'
+    dbus-send --print-reply --system --dest=org.freedesktop.Accounts /org/freedesktop/Accounts/User$UID org.freedesktop.Accounts.User.SetFormatsLocale string:'en_US.UTF-8' 1>/dev/null
+
+    Success "Set locale to US English"
+}
+
+function ConfigureKeyboard()
+{
+    gsettings set org.gnome.desktop.peripherals.keyboard repeat-interval 40
+    gsettings set org.gnome.desktop.peripherals.keyboard delay 250
+
+    Success "Configured the keyboard"
+}
+
+function SetFavoriteApps()
+{
+    gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'code.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.gedit.desktop']"
+}
+
+function SetChromeAsTheDefaultBrowser()
+{
+    sudo update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/bin/google-chrome 500 1>/dev/null
+    sudo update-alternatives --set x-www-browser /usr/bin/google-chrome 1>/dev/null
+
+    Success "Set Chrome as the default browser"
+}
+
+function DisableWayland()
+{
+    sudo sed -i 's/#\s*WaylandEnable\s*=.*$/WaylandEnable=false/g' /etc/gdm3/custom.conf
+    sudo sed -i 's/#\s*AutomaticLoginEnable\s*=.*$/AutomaticLoginEnable=true/g' /etc/gdm3/custom.conf
+    sudo sed -i 's/#\s*AutomaticLogin\s*=.*$/AutomaticLogin=$USERNAME/g' /etc/gdm3/custom.conf
+
+    Success "Disabled Wayland"
+}
+
+function SetAppsToOpenMaximized()
+{
+    if ( which devilspie2 1>/dev/null ); then
+        Success "devilspie2;$Check"
+    else
+        sudo apt install devilspie2 -y
+    fi
+
+    mkdir -p ~/.config/devilspie2
+
+    if [ ! -s ~/.config/devilspie2/maximize.lua ]; then
+        wget https://raw.githubusercontent.com/HolismHolding/Setup/main/Maximize -O ~/.config/devilspie2/maximize.lua
+    fi
+
+    if [ ! -d ~/.config/autostart ]; then
+        mkdir ~/.config/autostart
+    fi
+
+    if [ ! -s ~/.config/autostart/devilspie2.desktop ]; then
+        wget https://raw.githubusercontent.com/HolismHolding/Setup/main/Autostart -O ~/.config/autostart/devilspie2.desktop
+    fi
+
+    Success "Configured apps to be opened maximized"
+}
+
+function PreventAutoHideTheDock()
+{
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed true
+    Success "Configured Fixed dock"
+}
+
+function IncreaseLimits()
+{
+    # sysctl fs.inotify
+    sudo sysctl fs.inotify.max_user_instances=8192 1>/dev/null
+    sudo sed -i 's/^.*DefaultLimitNOFILE=.*$/DefaultLimitNOFILE=65536/g' /etc/systemd/system.conf
+    sudo sed -i 's/^.*DefaultLimitNOFILE=.*$/DefaultLimitNOFILE=65536/g' /etc/systemd/user.conf
+
+    Success "Increased Limits"
+}
+
+function CloneInfra()
+{
+    if [ ! -d /HolismHolding ]; then
+        Clone HolismHolding
+    fi
+}
+
+function PullImages()
+{
+    if ( docker image ls | grep site 1>/dev/null ); then
+        Success "holism/site;$Check"
+    else
+        Info "Getting holism/site"
+        docker pull holism/site
+    fi
+
+    if IsFullStackDeveloper;
+    then
+        if ( docker image ls | grep api 1>/dev/null ); then
+            Success "holism/api;$Check"
+        else
+            Info "Getting holism/api"
+            docker pull holism/api
+        fi
+
+        if ( docker image ls | grep mariadb 1>/dev/null ); then
+        Success "mariadb;$Check"
+        else
+            Info "Getting mariadb"
+            docker pull mariadb
+        fi
+
+        if ( docker image ls | grep panel 1>/dev/null ); then
+            Success "holism/panel;$Check"
+        else
+            Info "Getting holism/panel"
+            docker pull holism/panel
+        fi
+
+        if ( docker image ls | grep adminer 1>/dev/null ); then
+            Success "adminer;$Check"
+        else
+            Info "Getting adminer"
+            docker pull adminer
+        fi
+    fi
+}
+
+function SetDeveloperRole()
+{
+    if ! [ "$( cat /etc/bash.bashrc | grep DeveloperRole )" ];
+    then
+        Divide
+        Info "What is your role as a developer? (If you are a front-end developer, press Enter)"
+        Divide
+        read Role
+        if [ $Role ]; then
+            echo "export DeveloperRole='$Role' " >> /etc/bash.bashrc
+        else
+            echo "export DeveloperRole='FrontEnd' " >> /etc/bash.bashrc
+        fi
+    fi
+}
+
+function PreventDimmingAndSleeping()
+{
+    gsettings set org.gnome.settings-daemon.plugins.power ambient-enabled false
+    gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0
+    Success "Configured the power saving options"
+}
+
+function PreventMultiWorkspaces()
+{
+    gsettings set org.gnome.mutter dynamic-workspaces false
+    gsettings set org.gnome.desktop.wm.preferences num-workspaces 1
+    Success "Disabled multi-workspaces"
+}
+
+function TurnOffAutomaticScreenLock()
+{
+    gsettings set org.gnome.desktop.screensaver lock-enabled false
+    Success "Disabled Automatic Screen Lock"
+}
+
+function SetThousandsSeparatorToCalculator()
+{
+    gsettings set org.gnome.calculator show-thousands true
+    Success "Configured the Calculator thousand separator"
+}
+
+function SetTimeZone()
+{
+    if ( timedatectl | grep "Asia/Tehran" 1>/dev/null ); then
+        Success "Time Zone;$Check"
+        return;
+    fi
+    timedatectl set-timezone Asia/Tehran
+    Success "Configured Time Zone"
+}
+
+# SetDeveloperRole
+
+sudo echo ""
+cd /Temp
+Divide
+Info "Holism Installation"
+Divide
+
+# InstallVpn
+InstallChrome
+InstallVsCode
+InstallVsCodeExtensionRemoteContainers
+InstallVsCodeExtensionCodeSpellChecker
+InstallGit
+InstallDocker
+InstallDockerCompose
+InstallAnydesk
+InstallScreenRecorder
+InstallNginx
+InstallMkcert
+InstallMicro
+InstallTelnet
+InstallTrans
+InstallBeyondCompare
+InstallSshServer
+InstallJq
+# InstallCloc
+InstallProgress
+InstallRename
+InstallParallel
+InstallBaobab
+InstallDconfEditor
+InstallSafeEye
+# InstallWarp
+InstallBashCompletion
+#InstallWireshark
+InstallHttpie
+InstallPip
+InstallInflect
+InstallHump
+
+if IsFullStackDeveloper; then
+    DownloadVsCodeExtensions
+fi
+
+ConfigureDocker
+ConfigureNginx
+RegisterHolismCommands
+
+GiveAccessToRoot
+# TestGitHubAccess
+AddPersianInputSource
+SetLocaleToEnglishUs
+ConfigureKeyboard
+SetFavoriteApps
+SetChromeAsTheDefaultBrowser
+DisableWayland
+SetAppsToOpenMaximized
+PreventAutoHideTheDock
+IncreaseLimits
+PreventDimmingAndSleeping
+PreventMultiWorkspaces
+TurnOffAutomaticScreenLock
+SetThousandsSeparatorToCalculator
+SetTimeZone
+if [[ -d /HolismHolding/Commands/ConfigVsCode ]]; then
+    /HolismHolding/Commands/ConfigVsCode
+fi
+
+CloneInfra
+# PullImages
+
+Divide
+
+# SetDockerPermissions
+# Warning "IMPORTANT => RESTART YOUR SYSTEM"
+
+Divide
