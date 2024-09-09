@@ -455,14 +455,16 @@ function InstallPip()
 
 function InstallInflect()
 {
-    pip install inflect 1>/dev/null
+    pip install inflect --break-system-packages 1>/dev/null
+    # this shouldn't need the --break-system-packages, find the issue
 
     Success "inflect; $Check"
 }
 
 function InstallHump()
 {
-    pip install pyhumps 1>/dev/null
+    pip install pyhumps --break-system-packages 1>/dev/null
+    # this shouldn't need the --break-system-packages, find the issue
 
     Success "pyhumps; $Check"
 }
