@@ -605,7 +605,6 @@ function InstallDconfEditor()
 }
 
 function InstallSafeEyes()
-InstallStrechly
 {
     if ( which safeeyes 1>/dev/null ); then
         Success "SafeEyes;$Check"
@@ -619,6 +618,23 @@ InstallStrechly
     sudo apt-get install safeeyes -y
 
     Success "Installed safeeyes"
+}
+
+function InstallStrechly()
+{
+    if (  dpkg -l | grep -i stretchly 1>/dev/null ); then
+        Success "Strechly;$Check"
+        return
+    fi
+
+    Info "Installing Strechly ..."
+
+    wget -q --show-progress $(curl -s https://api.github.com/repos/hovancik/stretchly/releases/latest | grep "browser_download_url.*amd64.deb" | cut -d : -f 2,3 | tr -d \")
+    debFiles=$(ls stretchly*.deb)
+    sudo dpkg -i $debFiles
+    sudo apt-get install -f -y
+
+    Success "Installed Strechly"
 }
 
 function InstallWarp()
@@ -982,6 +998,7 @@ InstallParallel
 InstallBaobab
 InstallDconfEditor
 InstallSafeEyes
+InstallStrechly
 # InstallWarp
 InstallBashCompletion
 InstallMitmProxy
