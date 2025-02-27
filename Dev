@@ -137,6 +137,11 @@ function InstallVsCodeExtensionCodeSpellChecker()
 
 function InstallRemmina()
 {
+    if ( which remmina 1>/dev/null ); then
+        Success "Remmina;$Check"
+        return
+    fi
+
     sudo apt-add-repository ppa:remmina-ppa-team/remmina-next
     sudo apt update
     sudo apt install remmina remmina-plugin-rdp remmina-plugin-secret
@@ -637,6 +642,19 @@ function InstallStrechly()
     Success "Installed Strechly"
 }
 
+function InstallVLC()
+{
+    if ( which vlc 1>/dev/null ); then
+        Success "VLC;$Check"
+        return
+    fi
+
+    sudo apt update
+    sudo apt install vlc -y
+    
+    Success "Installed VLC"
+}
+
 function InstallWarp()
 {
     if ( which warp-cli 1>/dev/null ); then
@@ -998,7 +1016,8 @@ InstallParallel
 InstallBaobab
 InstallDconfEditor
 InstallSafeEyes
-InstallStrechly
+# InstallStrechly
+InstallVLC
 # InstallWarp
 InstallBashCompletion
 InstallMitmProxy
