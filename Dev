@@ -247,7 +247,7 @@ function InstallLegacyDockerCompose()
         return
     fi
 
-    Info "Installing Docker Compose ..."
+    Info "Installing Legacy Docker Compose ..."
 
     sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 
@@ -276,20 +276,20 @@ function InstallDockerCompose()
     Success "Installed Docker Compose"
 }
 
-function InstallRustDesk()
+function InstallAnyDesk()
 {
-   if ( which rustdesk 1>/dev/null ); then
-        Success "RustDesk;$Check"
+   if ( which anydesk 1>/dev/null ); then
+        Success "AnyDesk;$Check"
         return
     fi
 
-    Info "Installing RustDesk ..."
-    wget https://github.com/rustdesk/rustdesk/releases/download/1.2.3-2/rustdesk-1.2.3-2-x86_64.deb -O /Temp/RustDesk.deb
-    sudo chmod +x /Temp/RustDesk.deb
-    sudo apt install /Temp/RustDesk.deb -y
-    sudo rm -rf /Temp/RustDesk.deb
+    Info "Installing AnyDesk ..."
+    wget https://download.anydesk.com/linux/anydesk_6.4.2-1_amd64.deb -O /Temp/AnyDesk.deb
+    sudo chmod +x /Temp/AnyDesk.deb
+    sudo apt install /Temp/AnyDesk.deb -y
+    sudo rm -rf /Temp/AnyDesk.deb
 
-    Success "Installed RustDesk"
+    Success "Installed AnyDesk"
 }
 
 function InstallScreenRecorder()
@@ -998,7 +998,7 @@ InstallGitHubCli
 InstallDocker
 InstallLegacyDockerCompose
 InstallDockerCompose
-InstallRustDesk
+InstallAnyDesk
 InstallScreenRecorder
 InstallNginx
 InstallMkcert
