@@ -46,41 +46,24 @@ function IsFullStackDeveloper()
     return 1;
 }
 
-function InstallVpn()
+function ConfigureApt()
 {
-    if [ ! -f /LocalSecrets/Vpn ]; then
-        sudo mkdir /LocalSecrets
-        sudo chmod 777 --preserve-root /LocalSecrets
-        Divide
-        Info Please enter your VPN username
-        Divide
-        read Username
-        Divide
-        Info Please enter your VPN password
-        Divide
-        read Password
-        Divide
-        echo $Username > /LocalSecrets/Vpn
-        echo $Password >> /LocalSecrets/Vpn
-        sudo chmod 777 --preserve-root /LocalSecrets/Vpn
+    echo "Acquire::http::Timeout \"5\";" | sudo tee /etc/apt/apt.conf.d/99timeout >/dev/null 2>&1
+    sudo sed -i 's/ir\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/sources.list.d/ubuntu.sources
+}
+
+function InstallCurl()
+{
+    if ( which curl 1>/dev/null ); then
+        Success "curl;$Check"
+        return
     fi
 
-    if ( which piactl 1>/dev/null ); then
-        Success "Private Internet Access;$Check"
-    else
-        Info "Installing Private Internet Access ..."
+    Info "Installing curl ..."
 
-        wget https://vaultofcode.blob.core.windows.net/downloads/pia.zip -O /Temp/pia.zip
-        sudo unzip /Temp/pia.zip
-        sudo chmod 777 --preserve-root /Temp/pia-linux-3.3.1-06924.run
-        sh /Temp/pia-linux-3.3.1-06924.run
-        sudo rm -rf /Temp/pia-linux-3.3.1-06924.run
-        sudo rm -rf /Temp/pia-linux.zip
+    sudo apt install curl -y
 
-        piactl login /LocalSecrets/Vpn
-
-        Success "Installed Private Internet Access"
-    fi
+    Success "Installed curl"
 }
 
 function InstallChrome()
@@ -92,7 +75,7 @@ function InstallChrome()
 
     Info "Installing Google Chrome ..."
 
-    sudo apt-get update
+    sudo apt update
     #sudo apt upgrade
     wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O chrome
 
@@ -152,6 +135,15 @@ function InstallVsCodeExtensionCodeSpellChecker()
     Success "Installed Code Spell Checker Extension"
 }
 
+function InstallRemmina()
+{
+    sudo apt-add-repository ppa:remmina-ppa-team/remmina-next
+    sudo apt update
+    sudo apt install remmina remmina-plugin-rdp remmina-plugin-secret
+    
+    Success "Installed Remmina"
+}
+
 function InstallAzureDataStudio()
 {
     if ( which azuredatastudio 1>/dev/null ); then
@@ -184,10 +176,28 @@ function InstallGit()
 
     Info "Installing Git ..."
 
-    sudo apt-get install git -y
+    sudo apt install git -y
     git config --global init.defaultBranch main
 
     Success "Installed Git"
+}
+
+function InstallGitHubCli()
+{
+    if ( which gh 1>/dev/null ); then
+        Success "GitHub CLI;$Check"
+        return
+    fi
+
+    Info "Installing GitHub CLI ..."
+
+    sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+    && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && sudo apt update \
+    && sudo apt install gh -y
+
+    Success "Installed GitHub CLI"
 }
 
 function InstallDocker()
@@ -199,9 +209,7 @@ function InstallDocker()
 
     Info "Installing Docker ..."
 
-    sudo apt-get update
-
-    sudo apt-get install \
+    sudo apt install \
         apt-transport-https \
         ca-certificates \
         curl \
@@ -214,8 +222,8 @@ function InstallDocker()
     "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
     $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    sudo apt-get update
-    sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+    sudo apt update
+    sudo apt install docker-ce docker-ce-cli containerd.io -y
     sudo docker run hello-world
 
     # sudo gpasswd -a $USER docker
@@ -227,7 +235,7 @@ function InstallDocker()
     Success "Installed Docker"
 }
 
-function InstallDockerCompose()
+function InstallLegacyDockerCompose()
 {
     if ( which docker-compose 1>/dev/null ); then
         Success "Docker compose;$Check"
@@ -241,24 +249,42 @@ function InstallDockerCompose()
     sudo chmod +x --preserve-root /usr/local/bin/docker-compose
     docker-compose --version
 
-    Success "Installed Docker Compose"
+    Success "Installed Legacy Docker Compose"
 }
 
-function InstallAnydesk()
+function InstallDockerCompose()
 {
-    if ( which anydesk 1>/dev/null ); then
-        Success "Anydesk;$Check"
+    if docker compose &> /dev/null; then
+        Success "Docker compose;$Check"
         return
     fi
 
-    Info "Installing AnyDesk ..."
+    Info "Installing Docker Compose ..."
 
-    wget -qO - https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo apt-key add -
-    echo "deb http://deb.anydesk.com/ all main" | sudo tee /etc/apt/sources.list.d/anydesk-stable.list
-    sudo apt update
-    sudo apt install anydesk -y
+    DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+    sudo mkdir -p $DOCKER_CONFIG/cli-plugins
+    sudo curl -SL https://github.com/docker/compose/releases/download/v2.27.0/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
+    sudo chmod +x --preserve-root $DOCKER_CONFIG/cli-plugins/docker-compose
 
-    Success "Installed AnyDesk"
+    docker compose version
+
+    Success "Installed Docker Compose"
+}
+
+function InstallRustDesk()
+{
+   if ( which rustdesk 1>/dev/null ); then
+        Success "RustDesk;$Check"
+        return
+    fi
+
+    Info "Installing RustDesk ..."
+    wget https://github.com/rustdesk/rustdesk/releases/download/1.2.3-2/rustdesk-1.2.3-2-x86_64.deb -O /Temp/RustDesk.deb
+    sudo chmod +x /Temp/RustDesk.deb
+    sudo apt install /Temp/RustDesk.deb -y
+    sudo rm -rf /Temp/RustDesk.deb
+
+    Success "Installed RustDesk"
 }
 
 function InstallScreenRecorder()
@@ -270,7 +296,6 @@ function InstallScreenRecorder()
 
     Info "Installing simplescreenrecorder ..."
 
-    sudo apt update
     sudo apt install simplescreenrecorder -y
 
     Success "Installed simplescreenrecorder"
@@ -335,7 +360,7 @@ function InstallTelnet()
 
     Info "Installing Telnet ..."
 
-    sudo apt-get install telnet -y
+    sudo apt install telnet -y
 
     Success "Installed Telnet"
 }
@@ -364,7 +389,6 @@ function InstallBeyondCompare()
     Info "Installing Beyond Compare ..."
 
     wget https://www.scootersoftware.com/files/bcompare-4.4.7.28397_amd64.deb
-    sudo apt update
     sudo apt install ./bcompare-4.4.7.28397_amd64.deb
 
     Success "Installed Beyond Compare"
@@ -405,22 +429,9 @@ function InstallBashCompletion()
     BashCompletionUpdate
 }
 
-function InstallWireshark()
+function InstallMitmProxy()
 {
-    # todo: unattended installation
-    # https://askubuntu.com/questions/1275842/install-wireshark-without-confirm
-    if ( which wireshark 1>/dev/null ); then
-        Success "Wireshark;$Check"
-        return;
-    fi
-
-    Info "Installing Wireshark ..."
-
-    sudo apt-get install wireshark -y
-    sudo dpkg-reconfigure wireshark-common
-    sudo usermod -aG wireshark $USER
-
-    Success "Installed Wireshark"
+    Error "Installing MitmProxy ..."
 }
 
 function InstallHttpie()
@@ -434,7 +445,8 @@ function InstallHttpie()
 
     sudo apt install httpie -y
 
-    sudo apt update && sudo apt -y upgrade httpie
+    sudo apt update
+    sudo apt -y upgrade httpie
 
     Success "Installed HTTPie"
 }
@@ -455,7 +467,7 @@ function InstallPip()
 
 function InstallInflect()
 {
-    pip install inflect --break-system-packages 1>/dev/null
+    pip install --break-system-packages inflect 1>/dev/null 2>&1
     # this shouldn't need the --break-system-packages, find the issue
 
     Success "inflect; $Check"
@@ -463,11 +475,34 @@ function InstallInflect()
 
 function InstallHump()
 {
-    pip install pyhumps --break-system-packages 1>/dev/null
+    pip install --break-system-packages pyhumps 1>/dev/null 2>&1
     # this shouldn't need the --break-system-packages, find the issue
 
     Success "pyhumps; $Check"
 }
+
+function InstallLineProfiler()
+{
+    sudo apt install python3-line-profiler 1>/dev/null 2>&1
+}
+
+function InstallDnsmasq()
+{
+    if ( which dnsmasq 1>/dev/null ); then
+        Success "dnsmasq;$Check"
+        return
+    fi
+
+    Info "Installing dnsmasq ..."
+    
+    sudo apt install dnsmasq -y
+    sudo systemctl stop systemd-resolved
+    sudo systemctl disable systemd-resolved
+    sudo systemctl restart dnsmasq
+
+    Success "Installed dnsmasq"
+}
+
 
 function InstallJq()
 {
@@ -478,8 +513,7 @@ function InstallJq()
 
     Info "Installing jq ..."
 
-    sudo apt-get update
-    sudo apt-get install jq -y
+    sudo apt install jq -y
 
     Success "Installed jq"
 }
@@ -507,11 +541,11 @@ function InstallProgress()
 
     Info "Installing progress ..."
 
-    sudo apt-get update
-    sudo apt-get install progress -y
+    sudo apt install progress -y
 
     Success "Installed progress"
 }
+
 
 function InstallRename()
 {
@@ -551,7 +585,7 @@ function InstallBaobab()
 
     Info "Installing baobab ..."
 
-    sudo apt-get install -y baobab
+    sudo apt install -y baobab
 
     Success "Installed baobab"
 }
@@ -565,12 +599,13 @@ function InstallDconfEditor()
 
     Info "Installing dconf-editor ..."
 
-    sudo apt-get install -y dconf-editor
+    sudo apt install -y dconf-editor
 
     Success "Installed dconf-editor"
 }
 
-function InstallSafeEye()
+function InstallSafeEyes()
+InstallStrechly
 {
     if ( which safeeyes 1>/dev/null ); then
         Success "SafeEyes;$Check"
@@ -579,6 +614,8 @@ function InstallSafeEye()
 
     Info "Installing safeeyes ..."
 
+    sudo add-apt-repository ppa:safeeyes-team/safeeyes -y
+    sudo apt-get update
     sudo apt-get install safeeyes -y
 
     Success "Installed safeeyes"
@@ -595,34 +632,17 @@ function InstallWarp()
 
     curl https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list
-    sudo apt-get update && sudo apt-get install cloudflare-warp -y
+    sudo apt update
+    sudo apt install cloudflare-warp -y
 
     Success "Installed warp-cli"
-}
-
-function ConfigureDocker()
-{
-    sudo mkdir -p /etc/docker
-    sudo chmod 777 --preserve-root /etc/docker
-
-    sudo bash -c 'echo "{" > /etc/docker/daemon.json'
-    sudo bash -c 'echo " \"registry-mirrors\": [\"https://docker.iranserver.com\", \"https://registry.docker.ir\", \"https://mirror.gcr.io\"]" >> /etc/docker/daemon.json'
-    # sudo echo " \"features\": { \"containerd-snapshotter\": true }" >> /etc/docker/daemon.json
-    sudo bash -c 'echo "}" >> /etc/docker/daemon.json'
-
-    sudo systemctl daemon-reload
-    sudo systemctl restart docker
-
-    # docker system info
-
-    # https://mirror.iranserver.com/docker/
 }
 
 function ConfigureNginx()
 {
     sudo sed -i 's/#\s*server_names_hash_bucket_size\s*\d+;$/	server_names_hash_bucket_size 512;/g' /etc/nginx/nginx.conf
 
-    Success "Nginx configured"
+    # Success "Nginx configured"
 }
 
 function RegisterVaultOfCodeCommands()
@@ -655,29 +675,52 @@ function SetDockerPermissions()
 
 function DownloadVsCodeExtensions()
 {
-    if [ -f /VaultOfCode/Extensions/CSharp.vsix ]; then
+    if [ -f /Temp/Extensions/CSharp.vsix ]; then
         Success "CSharp extension;$Check"
     else
 
         Info "Downloading C# VS Code extension ... "
 
-        sudo mkdir -p /VaultOfCode/Extensions
-
-        # wget https://vaultofcode.blob.core.windows.net/downloads/CSharp20312.vsix -O CSharp.vsix
-        # sudo mv CSharp.vsix /VaultOfCode/Extensions/CSharp.vsix
-
+        sudo rm -rf /Temp/Extensions/CSharp.vsix /Temp/Extensions/DotNetInstallTool.vsix
+        sudo chmod -R 777 --preserve-root /Temp/Extensions
+        sudo mkdir -p /Temp/Extensions
         find /Temp -maxdepth 1 -name "*vspackage?target*" | xargs rm -rf
         ua="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1"
-        wget --save-cookies cookies.txt --keep-session-cookies https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.csharp
-        wget -U "$ua" --load-cookies cookies.txt https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-dotnettools/vsextensions/csharp/2.15.30/vspackage?targetPlatform=linux-x64
+        latestCSharpVersion=$(curl -s https://api.github.com/repos/dotnet/vscode-csharp/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
+        latestCSharpVersion="${latestCSharpVersion#v}"
+        echo "C# Extension Version: $latestCSharpVersion"
+        if [[ "$latestCSharpVersion" == "" ]]; then
+            echo "Error: C# VS Code extension's latest version could not be found."
+            exit 1
+        fi
+        sudo wget --save-cookies cookies.txt --keep-session-cookies https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.csharp
+        sudo wget -U "$ua" --load-cookies cookies.txt https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-dotnettools/vsextensions/csharp/$latestCSharpVersion/vspackage?targetPlatform=linux-x64
         sudo mv vspackage\?targetPlatform\=linux-x64 CSharp.gz
-        # file CSharp.gz
         sudo gunzip -v CSharp.gz
         sudo mv CSharp CSharp.vsix
-        sudo mv CSharp.vsix /VaultOfCode/Extensions/
+        sudo mv CSharp.vsix /Temp/Extensions/
+        sudo rm -rf /Temp/Extensions/DotNetInstallTool.vsix
+        sudo chmod -R 777 --preserve-root /Temp/Extensions
+        sudo mkdir -p /Temp/Extensions
+        find /Temp -maxdepth 1 -name "*vspackage?target*" | xargs rm -rf
+        ua="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1"
+        rawMetadata=$(curl -s -X POST -H "Content-Type: application/json" -H "Accept: application/json;api-version=3.0-preview.1" https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery -d '{"filters":[{"criteria":[{"filterType":7,"value":"ms-dotnettools.vscode-dotnet-runtime"}],"pageNumber":1,"pageSize":1,"sortBy":0,"sortOrder":0}],"assetTypes":[],"flags":514}')
+        netInstallToolVersion=$(echo "$rawMetadata" | jq -r '.results[0].extensions[0].versions[0].version')
+        echo ".NET Install Tool Extension Version: $netInstallToolVersion"
+        if [[ "$netInstallToolVersion" == "" || "$netInstallToolVersion" == "null" ]]; then
+            echo "Error: No compatible .NET Install Tool VS Code extension version found."
+            exit 1
+        fi
+        sudo wget --save-cookies cookies.txt --keep-session-cookies https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.vscode-dotnet-runtime
+        sudo wget -U "$ua" --load-cookies cookies.txt https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-dotnettools/vsextensions/vscode-dotnet-runtime/$netInstallToolVersion/vspackage
+        sudo mv vspackage DotNetInstallTool.gz
+        sudo gunzip -v DotNetInstallTool.gz
+        sudo mv DotNetInstallTool DotNetInstall.vsix
+        sudo mv DotNetInstall.vsix /Temp/Extensions/
+        sudo chmod -R 777 --preserve-root /Temp/Extensions
+        echo "Extensions downloaded and saved to /Temp/Extensions."
 
         Success "Downloaded C# VS Code extension "
-
     fi
 }
 
@@ -868,6 +911,7 @@ function PreventDimmingAndSleeping()
     gsettings set org.gnome.settings-daemon.plugins.power ambient-enabled false
     gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
     gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0
+    gsettings set org.gnome.desktop.session idle-delay 0
     Success "Configured the power saving options"
 }
 
@@ -908,15 +952,19 @@ Divide
 Info "VaultOfCode Installation"
 Divide
 
-# InstallVpn
+ConfigureApt
+InstallCurl
 InstallChrome
 InstallVsCode
 InstallVsCodeExtensionRemoteContainers
 InstallVsCodeExtensionCodeSpellChecker
+InstallRemmina
 InstallGit
+InstallGitHubCli
 InstallDocker
+InstallLegacyDockerCompose
 InstallDockerCompose
-InstallAnydesk
+InstallRustDesk
 InstallScreenRecorder
 InstallNginx
 InstallMkcert
@@ -925,6 +973,7 @@ InstallTelnet
 InstallTrans
 InstallBeyondCompare
 InstallSshServer
+# InstallDnsmasq
 InstallJq
 # InstallCloc
 InstallProgress
@@ -932,20 +981,20 @@ InstallRename
 InstallParallel
 InstallBaobab
 InstallDconfEditor
-InstallSafeEye
+InstallSafeEyes
 # InstallWarp
 InstallBashCompletion
-#InstallWireshark
+InstallMitmProxy
 InstallHttpie
 InstallPip
 InstallInflect
 InstallHump
+InstallLineProfiler
 
 if IsFullStackDeveloper; then
     DownloadVsCodeExtensions
 fi
 
-ConfigureDocker
 ConfigureNginx
 RegisterVaultOfCodeCommands
 
