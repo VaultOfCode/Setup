@@ -292,6 +292,22 @@ function InstallAnyDesk()
     Success "Installed AnyDesk"
 }
 
+function InstallV2rayN()
+{
+    if dpkg -l | grep -q "v2rayn"; then
+        Success "v2rayN;$Check"
+        return
+    fi
+
+    Info "Installing v2rayN ..."
+    wget https://github.com/2dust/v2rayN/releases/download/7.9.3/v2rayN-linux-64.deb -O /Temp/v2rayN.deb
+    sudo chmod +x /Temp/v2rayN.deb
+    sudo apt install /Temp/v2rayN.deb -y
+    sudo rm -rf /Temp/v2rayN.deb
+
+    Success "Installed v2rayN"
+}
+
 function InstallScreenRecorder()
 {
    if ( which simplescreenrecorder 1>/dev/null ); then
@@ -999,6 +1015,7 @@ InstallDocker
 InstallLegacyDockerCompose
 InstallDockerCompose
 InstallAnyDesk
+InstallV2rayN
 InstallScreenRecorder
 InstallNginx
 InstallMkcert
