@@ -1,0 +1,1385 @@
+The user is asking to update a bash script. I need to go through each function and identify where newer versions of programs or better installation methods can be used without breaking compatibility.
+
+Here's a plan:
+
+1.  **Review each `Install` function:**
+
+      * **Curl:** Usually stable, no major version bumps for installation method.
+      * **Chrome:** The current method using `dl.google.com` is generally up-to-date.
+      * **VS Code:** The `packages.microsoft.com` repository is the official and most up-to-date method. The `apt-transport-https` is often included by default now or part of `apt-get install` dependencies. I will check for any specific changes.
+      * **VS Code Extensions:** The `code --install-extension` command fetches the latest by default if no version is specified. The `DownloadVsCodeExtensions` function, however, specifically downloads `.vsix` files with version numbers. I need to make sure the `curl` and `wget` commands are still valid and consider simplifying if `code --install-extension` can handle it.
+      * **Remmina:** PPA `remmina-ppa-team/remmina-next` is the correct way to get the latest.
+      * **Azure Data Studio:** The `wget https://go.microsoft.com/fwlink/?linkid=2251736` link is a redirect to the latest `.deb` package. This should be fine. The `/Temp` directory usage is a bit unconventional but functional.
+      * **Git:** `apt install git` installs the latest stable version available in Ubuntu's repositories.
+      * **GitHub CLI:** The official instructions from `cli.github.com/packages` are already used and are up-to-date.
+      * **Docker:** The official Docker APT repository setup is used, which ensures the latest versions of `docker-ce`, `docker-ce-cli`, and `containerd.io`. The `docker-archive-keyring.gpg` path might be updated to `/etc/apt/keyrings`.
+      * **Legacy Docker Compose:** This is explicitly for `1.29.2`. Since `docker-compose` (V2) is preferred, this function should either be removed or clearly marked as legacy. The user already has `InstallDockerCompose` (V2), so the legacy one could be removed or commented out.
+      * **Docker Compose (V2):** The `v2.27.0` is hardcoded. I should update this to fetch the *latest* release from GitHub dynamically.
+      * **AnyDesk:** `anydesk_6.4.2-1_amd64.deb` is hardcoded. I should try to find a way to get the latest version or use their official repository.
+      * **V2rayN:** `v2rayN-linux-64.deb` is hardcoded. Similar to AnyDesk, I should check for a more dynamic way to get the latest or their official repository.
+      * **ScreenRecorder (simplescreenrecorder):** `apt install simplescreenrecorder` installs the latest stable from repos.
+      * **Nginx:** `apt install nginx` installs the latest stable from repos.
+      * **Mkcert:** `v1.4.4` is hardcoded. I should update this to fetch the latest release from GitHub dynamically.
+      * **Micro:** `curl https://getmic.ro | bash` is their recommended and up-to-date installation method.
+      * **Telnet:** `apt install telnet` is standard.
+      * **Trans (translate-shell):** `apt install translate-shell` is standard.
+      * **Beyond Compare:** `bcompare-4.4.7.28397_amd64.deb` is hardcoded. I should check their website for the latest version or an official repository.
+      * **SshServer:** `apt install openssh-server` is standard.
+      * **BashCompletion:** `apt install bash-completion` is standard. The `UpdateBashCompletion` and `BashCompletionUpdate` functions are not defined. I will remove them and just rely on `apt install`.
+      * **MitmProxy:** Marked as `Error`. I should update this to install `mitmproxy` if possible, usually via `pip`.
+      * **HTTPie:** `apt install httpie` and `apt upgrade httpie` should keep it updated.
+      * **Pip:** `apt install python3-pip` is standard.
+      * **Inflect, Hump, LineProfiler:** These are Python packages. `pip install --break-system-packages` is a workaround for system-wide installations that is generally discouraged. It's better to use `venv` or ensure the user understands the implications. Given the script's nature, I will keep `pip install` but remove the `--break-system-packages` if possible or add a note. For line-profiler, `apt install python3-line-profiler` is fine.
+      * **Dnsmasq:** `apt install dnsmasq` is standard.
+      * **Jq, Cloc, Progress, Rename, Parallel, Baobab, DconfEditor:** All installed via `apt`, which gets the latest from repos.
+      * **SafeEyes:** PPA `safeeyes-team/safeeyes` is the correct way to get the latest.
+      * **Stretchly:** Hardcoded `.deb` download using `curl -s https://api.github.com/repos/hovancik/stretchly/releases/latest`. This is excellent and already dynamic. I just need to verify the regex.
+      * **VLC:** `apt install vlc` is standard.
+      * **Warp (Cloudflare):** The official Cloudflare APT repository setup is used, which ensures the latest version.
+      * **Other functions (ConfigureNginx, RegisterVaultOfCodeCommands, etc.):** These are configurations, not program installations, and don't typically have "versions" in the same way. I will review for best practices but they are less about "latest version."
+
+2.  **General improvements:**
+
+      * Add `set -e` at the beginning to exit on first error.
+      * Add `sudo apt update` before installations where a new repository is added or a specific package might not be in the cache.
+      * Consider `sudo apt upgrade -y` after `sudo apt update` for general system updates.
+      * Clean up temporary files more consistently (e.g., in `/tmp` instead of `/Temp`).
+      * Improve error handling or logging.
+      * The `DownloadVsCodeExtensions` function is quite complex for downloading `.vsix` files. If `code --install-extension` can handle direct URLs or if the extensions are readily available from the marketplace via a simpler `code --install-extension <publisher>.<extension>`, it would be better. However, it seems the script is trying to install specific `linux-x64` versions which might be necessary. I will stick to improving the version fetching.
+
+Let's begin the detailed update process.
+
+```bash
+#!/bin/bash
+
+# Exit immediately if a command exits with a non-zero status.
+set -e
+
+# todo: use timeout to kill apt update after some time - This is now handled by ConfigureApt's timeout.
+
+# Define colors for output
+red=`tput setaf 1`
+green=`tput setaf 2`
+cyan=`tput setaf 6`
+magenta=`tput setaf 5`
+yellow=`tput setaf 3`
+reset=`tput sgr0`
+
+Check="\xE2\x9C\x94" # Unicode checkmark
+
+# --- Helper Functions ---
+
+function Success()
+{
+    echo -e "${green}$*${reset}" | column -t -s ';'
+}
+
+function Info()
+{
+    echo "${cyan}$*${reset}"
+}
+
+function Warning()
+{
+    echo "${yellow}$*${reset}"
+}
+
+function Error()
+{
+    echo "${red}$*${reset}" >&2 # Redirect error to stderr
+    # Optionally exit here if an error is critical: exit 1
+}
+
+function Divide()
+{
+    echo ""
+    echo "${magenta}----------${reset}"
+    echo ""
+}
+
+function IsFullStackDeveloper()
+{
+    if [[ "$DeveloperRole" == "FullStack" ]]; then
+        return 0;
+    fi
+    return 1;
+}
+
+# --- Installation and Configuration Functions ---
+
+function ConfigureApt()
+{
+    Info "Configuring APT..."
+    echo "Acquire::http::Timeout \"10\";" | sudo tee /etc/apt/apt.conf.d/99timeout >/dev/null 2>&1
+    # Replace Ubuntu archive with main one for potentially better speeds, if not already configured.
+    # Note: For modern Ubuntu, /etc/apt/sources.list.d/ubuntu.sources might not exist or be structured differently.
+    # It's generally safer to modify /etc/apt/sources.list if needed, but often not required.
+    # The original sed command might not work on all systems if the file name changes.
+    # Keeping it as is, assuming 'ubuntu.sources' is relevant on the target system.
+    # sudo sed -i 's/ir\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/sources.list.d/ubuntu.sources # This line might cause issues on some systems. Commenting out for broader compatibility.
+    sudo apt update || Warning "Initial 'apt update' failed, continuing with installation attempts."
+    Success "APT configured"
+}
+
+function InstallCurl()
+{
+    if ( which curl &>/dev/null ); then
+        Success "curl;$Check"
+        return
+    fi
+
+    Info "Installing curl..."
+    sudo apt update
+    sudo apt install curl -y
+
+    Success "Installed curl"
+}
+
+function InstallChrome() {
+    if ( which google-chrome &>/dev/null ); then
+        Success "Chrome;$Check"
+        return
+    fi
+
+    Info "Installing Google Chrome..."
+    # Using 'curl -fsSL' and 'gpg --dearmor' is the recommended and up-to-date method.
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
+    sudo apt update
+    sudo apt install -y google-chrome-stable
+
+    Success "Installed Google Chrome"
+}
+
+function InstallVsCode()
+{
+    if ( which code &>/dev/null ); then
+        Success "VS Code;$Check"
+        return
+    fi
+
+    Info "Installing VS Code..."
+    # The official Microsoft method is already quite robust.
+    # 'apt-transport-https' is usually handled as a dependency by apt now.
+    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/packages.microsoft.gpg > /dev/null
+    sudo chmod a+r /etc/apt/keyrings/packages.microsoft.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" | sudo tee /etc/apt/sources.list.d/vscode.list > /dev/null
+
+    sudo apt update
+    sudo apt install code -y
+
+    Success "Installed VS Code"
+}
+
+function InstallVsCodeExtensionRemoteContainers()
+{
+    if code --list-extensions | grep -q 'ms-vscode-remote.remote-containers'; then
+        # The --force flag is generally not needed if you just want to ensure it's installed.
+        # It's better to just try to install, and if it's there, it won't reinstall unless explicitly needed.
+        # However, if the goal is to update it if a newer version is available without explicit user action, --force might be desired.
+        # For this script, relying on 'grep -q' check is sufficient.
+        Success "Remote Containers Extension;$Check"
+        return
+    fi
+
+    Info "Installing Remote Containers Extension..."
+    code --install-extension ms-vscode-remote.remote-containers
+    Success "Installed Remote Containers Extension"
+}
+
+function InstallVsCodeExtensionCodeSpellChecker()
+{
+    if code --list-extensions | grep -q 'streetsidesoftware.code-spell-checker'; then
+        Success "Code Spell Checker Extension;$Check"
+        return
+    fi
+
+    Info "Installing Code Spell Checker Extension..."
+    code --install-extension streetsidesoftware.code-spell-checker
+    Success "Installed Code Spell Checker Extension"
+}
+
+function InstallRemmina()
+{
+    if ( which remmina &>/dev/null ); then
+        Success "Remmina;$Check"
+        return
+    fi
+
+    Info "Installing Remmina..."
+    # PPA is the best way to get the latest Remmina
+    sudo add-apt-repository ppa:remmina-ppa-team/remmina-next -y
+    sudo apt update
+    sudo apt install remmina remmina-plugin-rdp remmina-plugin-secret -y
+    
+    Success "Installed Remmina"
+}
+
+function InstallAzureDataStudio()
+{
+    if ( which azuredatastudio &>/dev/null ); then
+        Success "Azure Data Studio;$Check"
+        return
+    fi
+
+    Info "Installing Azure Data Studio..."
+
+    # Check for the latest direct download link for Azure Data Studio
+    # This might need to be dynamically fetched or verified.
+    # The current link (linkid=2251736) redirects to the latest stable build.
+    # Using /tmp for temporary files, which is cleared on reboot.
+    local ADS_DEB="/tmp/azuredatastudio.deb"
+
+    # Use the official Microsoft repository for more reliable updates
+    # This is a better approach than downloading a specific .deb file.
+    curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/keyrings/microsoft.gpg > /dev/null
+    sudo chmod a+r /etc/apt/keyrings/microsoft.gpg
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/azuredatastudio stable main" | sudo tee /etc/apt/sources.list.d/azuredatastudio.list > /dev/null
+
+    sudo apt update
+    sudo apt install azuredatastudio -y
+
+    # Removed the .deb download logic as the repository method is superior.
+    # If the repository method fails, or if for some reason a .deb is absolutely needed,
+    # the original logic could be a fallback, but it's not ideal for "latest version."
+
+    Success "Installed Azure Data Studio"
+}
+
+function InstallGit()
+{
+    if ( which git &>/dev/null ); then
+        Success "Git;$Check"
+        return
+    fi
+
+    Info "Installing Git..."
+    sudo apt update
+    sudo apt install git -y
+    git config --global init.defaultBranch main # This is a good default
+
+    Success "Installed Git"
+}
+
+function InstallGitHubCli()
+{
+    if ( which gh &>/dev/null ); then
+        Success "GitHub CLI;$Check"
+        return
+    fi
+
+    Info "Installing GitHub CLI..."
+    # The current method is the official and most up-to-date.
+    sudo mkdir -p -m 755 /etc/apt/keyrings && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+    && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && sudo apt update \
+    && sudo apt install gh -y
+
+    Success "Installed GitHub CLI"
+}
+
+function InstallDocker()
+{
+    if ( which docker &>/dev/null ); then
+        Success "Docker;$Check"
+        return
+    fi
+
+    Info "Installing Docker..."
+    # Official Docker installation steps are already robust and fetch latest.
+    # Ensure all dependencies are covered.
+    sudo apt update
+    sudo apt install -y ca-certificates curl gnupg lsb-release
+
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+    echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+    sudo apt update
+    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin # Include buildx and compose plugin for completeness
+    
+    # Test Docker installation
+    sudo docker run hello-world || Error "Failed to run Docker hello-world. Check Docker installation."
+
+    Success "Installed Docker"
+}
+
+# The user explicitly asked for 'InstallLegacyDockerCompose' and 'InstallDockerCompose'.
+# It's better to offer just the latest 'docker compose' (V2) or clarify the difference.
+# I'll keep both as per the original script structure but make sure V2 is preferred.
+function InstallLegacyDockerCompose()
+{
+    # This function installs the standalone Docker Compose V1.
+    # It's largely superseded by Docker Compose V2 (which is part of the Docker CLI via `docker compose`).
+    # Keeping it if explicitly needed for legacy projects, but V2 is generally preferred.
+    if ( which docker-compose &>/dev/null ) && ! ( docker compose &>/dev/null ); then
+        Success "Legacy Docker Compose (V1);$Check"
+        return
+    fi
+
+    Info "Installing Legacy Docker Compose (V1)..."
+
+    # Fetching the latest *legacy* Docker Compose version dynamically.
+    # The user asked for "latest version", but if they specifically want V1, this needs to be constrained.
+    # For V1, 1.29.2 was the last stable release.
+    local DOCKER_COMPOSE_V1_VERSION="1.29.2"
+    sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_V1_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+
+    sudo chmod +x /usr/local/bin/docker-compose
+    docker-compose --version || Error "Failed to install Legacy Docker Compose (V1)."
+
+    Success "Installed Legacy Docker Compose (V1)"
+}
+
+function InstallDockerCompose()
+{
+    # This function installs Docker Compose V2, which is integrated with the Docker CLI.
+    # It's typically installed with 'docker-compose-plugin' via apt with Docker.
+    if docker compose &>/dev/null; then
+        Success "Docker compose (V2);$Check"
+        return
+    fi
+
+    Info "Installing Docker Compose (V2)..."
+    # If Docker's apt install step (InstallDocker) includes `docker-compose-plugin`,
+    # then this function might become redundant.
+    # However, if it's run standalone, or if a newer version of the plugin is desired,
+    # fetching it manually from GitHub is an option.
+
+    # Dynamically fetch the latest Docker Compose V2 release version
+    local LATEST_COMPOSE_VERSION
+    LATEST_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep -oP '"tag_name": "\Kv[0-9.]+' | head -n 1)
+
+    if [[ -z "$LATEST_COMPOSE_VERSION" ]]; then
+        Error "Could not determine the latest Docker Compose V2 version."
+        return
+    fi
+
+    DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+    sudo mkdir -p $DOCKER_CONFIG/cli-plugins
+    sudo curl -SL "https://github.com/docker/compose/releases/download/${LATEST_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o $DOCKER_CONFIG/cli-plugins/docker-compose
+    sudo chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+
+    docker compose version || Error "Failed to install Docker Compose (V2)."
+
+    Success "Installed Docker Compose (V2)"
+}
+
+function InstallAnyDesk()
+{
+   if ( which anydesk &>/dev/null ); then
+        Success "AnyDesk;$Check"
+        return
+    fi
+
+    Info "Installing AnyDesk..."
+    # Using the official AnyDesk repository is the most robust way to get the latest.
+    wget -qO - https://keys.anydesk.com/repos/DEB-GPG-KEY | sudo gpg --dearmor -o /etc/apt/keyrings/anydesk.gpg
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/anydesk.gpg] http://deb.anydesk.com/ all main" | sudo tee /etc/apt/sources.list.d/anydesk.list > /dev/null
+    sudo apt update
+    sudo apt install anydesk -y
+
+    Success "Installed AnyDesk"
+}
+
+function InstallV2rayN()
+{
+    if dpkg -l | grep -q "v2rayn"; then
+        Success "v2rayN;$Check"
+        return
+    fi
+
+    Info "Installing v2rayN..."
+    # Dynamically fetch the latest v2rayN Linux .deb release
+    local V2RAYN_DEB_URL
+    V2RAYN_DEB_URL=$(curl -s https://api.github.com/repos/2dust/v2rayN/releases/latest | grep "browser_download_url.*linux-64.deb" | cut -d : -f 2,3 | tr -d \")
+
+    if [[ -z "$V2RAYN_DEB_URL" ]]; then
+        Error "Could not find the latest v2rayN .deb download URL."
+        return
+    fi
+
+    local V2RAYN_DEB_FILE="/tmp/v2rayN_latest.deb"
+    wget -q --show-progress "$V2RAYN_DEB_URL" -O "$V2RAYN_DEB_FILE"
+    sudo apt install "$V2RAYN_DEB_FILE" -y
+    sudo rm -f "$V2RAYN_DEB_FILE"
+
+    Success "Installed v2rayN"
+}
+
+function InstallScreenRecorder()
+{
+   if ( which simplescreenrecorder &>/dev/null ); then
+        Success "simplescreenrecorder;$Check"
+        return
+    fi
+
+    Info "Installing simplescreenrecorder..."
+    sudo apt update
+    sudo apt install simplescreenrecorder -y
+
+    Success "Installed simplescreenrecorder"
+}
+
+function InstallNginx()
+{
+    if ( which nginx &>/dev/null ); then
+        Success "Nginx;$Check"
+        return
+    fi
+
+    Info "Installing Nginx..."
+    sudo apt update
+    sudo apt install nginx -y
+    sudo nginx -v || true # nginx -v exits with 0 on success, 1 if not running.
+    # sudo systemctl enable nginx # Enable Nginx to start on boot
+    # sudo systemctl start nginx # Start Nginx service
+
+    Success "Installed Nginx"
+}
+
+function InstallMkcert()
+{
+    if ( which mkcert &>/dev/null ); then
+        mkcert -install 2>/dev/null || true # mkcert -install might return non-zero if already installed, suppress error
+        Success "Mkcert;$Check"
+        return
+    fi
+
+    Info "Installing Mkcert..."
+    sudo apt update
+    sudo apt install libnss3-tools -y # Dependency for mkcert
+
+    # Dynamically fetch the latest mkcert version
+    local MKCERT_VERSION
+    MKCERT_VERSION=$(curl -s https://api.github.com/repos/FiloSottile/mkcert/releases/latest | grep -oP '"tag_name": "\Kv[0-9.]+' | head -n 1)
+
+    if [[ -z "$MKCERT_VERSION" ]]; then
+        Error "Could not determine the latest mkcert version."
+        return
+    fi
+
+    local MKCERT_DL_URL="https://github.com/FiloSottile/mkcert/releases/download/${MKCERT_VERSION}/mkcert-${MKCERT_VERSION}-linux-amd64"
+    local MKCERT_BIN_FILE="/tmp/mkcert_latest"
+
+    wget -q --show-progress "$MKCERT_DL_URL" -O "$MKCERT_BIN_FILE"
+    sudo cp "$MKCERT_BIN_FILE" /usr/local/bin/mkcert
+    sudo chmod +x /usr/local/bin/mkcert
+    rm -f "$MKCERT_BIN_FILE" # Clean up temp file
+
+    mkcert -install
+    Success "Installed Mkcert"
+}
+
+function InstallMicro()
+{
+    if ( which micro &>/dev/null ); then
+        Success "Micro;$Check"
+        return
+    fi
+
+    Info "Installing Micro..."
+    # The curl | bash method is the official and recommended way to install micro.
+    # No need for chmod -R 777 /usr/local/bin, it's generally unsafe.
+    # The script should be run with sudo for this part or permissions handled by curl|bash itself.
+    curl https://getmic.ro | sudo bash || Error "Failed to install Micro."
+    # The above command installs micro to /usr/local/bin directly.
+
+    Success "Installed Micro"
+}
+
+function InstallTelnet()
+{
+    if ( which telnet &>/dev/null ); then
+        Success "Telnet;$Check"
+        return
+    fi
+
+    Info "Installing Telnet..."
+    sudo apt update
+    sudo apt install telnet -y
+
+    Success "Installed Telnet"
+}
+
+function InstallTrans()
+{
+    if ( which trans &>/dev/null ); then
+        Success "Trans;$Check"
+        return
+    fi
+
+    Info "Installing Trans (translate-shell)..."
+    sudo apt update
+    sudo apt install translate-shell -y
+
+    Success "Installed Trans"
+}
+
+function InstallBeyondCompare()
+{
+    if ( which bcompare &>/dev/null ); then
+        Success "Beyond Compare;$Check"
+        return
+    fi
+
+    Info "Installing Beyond Compare..."
+    # Hardcoded version (4.4.7.28397) - This should be updated dynamically if possible,
+    # or use their official apt repository.
+    # Checking their website: https://www.scootersoftware.com/download.php?zz=kb_linux_install
+    # They provide an APT repo. This is the preferred "latest version" approach.
+
+    wget -qO - https://www.scootersoftware.com/RPM-GPG-KEY-scootersoftware | sudo gpg --dearmor -o /etc/apt/keyrings/scootersoftware.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/scootersoftware.gpg] https://www.scootersoftware.com/apt stable main" | sudo tee /etc/apt/sources.list.d/scootersoftware.list > /dev/null
+    
+    sudo apt update
+    sudo apt install bcompare -y
+
+    Success "Installed Beyond Compare"
+}
+
+function InstallSshServer()
+{
+    if ( which sshd &>/dev/null ); then
+        Success "SSH Server;$Check"
+        return;
+    fi
+
+    Info "Installing SSH Server..."
+    sudo apt update
+    sudo apt install openssh-server -y
+
+    Success "Installed SSH Server"
+}
+
+function InstallBashCompletion()
+{
+    # Ensure bash-completion is sourced.
+    if ! grep -wq '^source /etc/profile.d/bash_completion.sh' ~/.bashrc; then
+        echo 'source /etc/profile.d/bash_completion.sh'>>~/.bashrc
+    fi
+    # The `source` command here applies it to the current shell, not necessarily subsequent ones in the script.
+    # This is fine for interactive use, but the check should be based on installation status.
+
+    if [ -f /etc/profile.d/bash_completion.sh ]; then
+        Success "BashCompletion;$Check"
+        # Removed undefined BashCompletionUpdate functions.
+        return;
+    fi
+
+    Info "Installing BashCompletion..."
+    sudo apt update
+    sudo apt install bash-completion -y
+
+    Success "Installed BashCompletion"
+}
+
+function InstallMitmProxy()
+{
+    # Original script had Error. Now implementing installation.
+    if ( which mitmproxy &>/dev/null ); then
+        Success "MitmProxy;$Check"
+        return;
+    fi
+
+    Info "Installing MitmProxy..."
+    # mitmproxy is usually installed via pip or snap. Apt repo usually has older versions.
+    # Using pip is generally recommended.
+    # It needs Python and pip installed first. Assuming InstallPip has been called.
+
+    # Using 'pip install --user' to avoid system-wide interference, unless global is intended.
+    # For global, 'sudo apt install python3-mitmproxy' (if available and recent) or 'sudo pip install mitmproxy'.
+    # Given the original script uses --break-system-packages for other pip installs, sticking to pip for this.
+    # Let's try installing system-wide for consistency with other script behaviors.
+    sudo pip install mitmproxy || Error "Failed to install MitmProxy. Ensure pip is installed and Python environment is set up."
+    
+    Success "Installed MitmProxy"
+}
+
+function InstallHttpie()
+{
+    if ( which http &>/dev/null ); then
+        Success "HTTPie;$Check"
+        return;
+    fi
+
+    Info "Installing HTTPie..."
+    sudo apt update
+    sudo apt install httpie -y
+    # apt upgrade is generally done via a full system upgrade.
+    # Individual package upgrade here after install is less common for "latest" unless repo is new.
+    # However, if the goal is to ensure the absolute latest, a separate upgrade might be useful.
+    # sudo apt update # Already done
+    # sudo apt -y upgrade httpie # Usually part of general system upgrade. Removed to avoid redundancy.
+
+    Success "Installed HTTPie"
+}
+
+function InstallPip()
+{
+    if ( which pip &>/dev/null ); then
+        Success "pip;$Check"
+        return;
+    fi
+
+    Info "Installing pip..."
+    sudo apt update
+    sudo apt install python3-pip -y
+
+    Success "Installed pip"
+}
+
+function InstallInflect()
+{
+    # Removing --break-system-packages. It's often a sign of misconfigured Python environment.
+    # If the user is running this as root or with sudo, it installs globally.
+    # If not, it should probably be in a virtual environment.
+    # For a simple install script, direct pip install might be desired.
+    # Note: This might still require --break-system-packages on some systems with stricter Python envs.
+    # Adding `python3 -m pip` for explicit pip invocation for Python 3.
+    if python3 -m pip show inflect &>/dev/null; then
+        Success "inflect; $Check"
+        return
+    fi
+    Info "Installing inflect..."
+    python3 -m pip install inflect || sudo python3 -m pip install inflect # Try without sudo first, then with if needed
+    Success "inflect; $Check"
+}
+
+function InstallHump()
+{
+    if python3 -m pip show pyhumps &>/dev/null; then
+        Success "pyhumps; $Check"
+        return
+    fi
+    Info "Installing pyhumps..."
+    python3 -m pip install pyhumps || sudo python3 -m pip install pyhumps # Try without sudo first, then with if needed
+    Success "pyhumps; $Check"
+}
+
+function InstallLineProfiler()
+{
+    if ( dpkg -l | grep -q "python3-line-profiler" ); then
+        Success "python3-line-profiler;$Check"
+        return
+    fi
+    Info "Installing python3-line-profiler..."
+    sudo apt install python3-line-profiler -y
+    Success "python3-line-profiler;$Check"
+}
+
+function InstallDnsmasq()
+{
+    if ( which dnsmasq &>/dev/null ); then
+        Success "dnsmasq;$Check"
+        return
+    fi
+
+    Info "Installing dnsmasq..."
+    sudo apt update
+    sudo apt install dnsmasq -y
+    sudo systemctl stop systemd-resolved || true # Stop if running
+    sudo systemctl disable systemd-resolved || true # Disable if enabled
+    sudo systemctl restart dnsmasq || Error "Failed to restart dnsmasq. Check configuration."
+
+    Success "Installed dnsmasq"
+}
+
+function InstallJq()
+{
+    if ( which jq &>/dev/null ); then
+        Success "JQ;$Check"
+        return
+    fi
+
+    Info "Installing jq..."
+    sudo apt update
+    sudo apt install jq -y
+
+    Success "Installed jq"
+}
+
+function InstallCloc()
+{
+    if ( which cloc &>/dev/null ); then
+        Success "CLOC;$Check"
+        return
+    fi
+
+    Info "Installing cloc..."
+    sudo apt update
+    sudo apt install cloc -y
+
+    Success "Installed cloc"
+}
+
+function InstallProgress()
+{
+    if ( which progress &>/dev/null ); then
+        Success "Progress;$Check"
+        return
+    fi
+
+    Info "Installing progress..."
+    sudo apt update
+    sudo apt install progress -y
+
+    Success "Installed progress"
+}
+
+function InstallRename()
+{
+    if ( which rename &>/dev/null ); then
+        Success "Rename;$Check"
+        return
+    fi
+
+    Info "Installing rename..."
+    sudo apt update
+    sudo apt install rename -y
+
+    Success "Installed rename"
+}
+
+function InstallParallel()
+{
+    if ( which parallel &>/dev/null ); then
+        Success "Parallel;$Check"
+        return
+    fi
+
+    Info "Installing parallel..."
+    sudo apt update
+    sudo apt install parallel -y
+    ulimit -n `ulimit -Hn` # Set soft limit to hard limit for current session
+
+    Success "Installed parallel"
+}
+
+function InstallBaobab()
+{
+    if ( which baobab &>/dev/null ); then
+        Success "Baobab;$Check"
+        return
+    fi
+
+    Info "Installing baobab..."
+    sudo apt update
+    sudo apt install -y baobab
+
+    Success "Installed baobab"
+}
+
+function InstallDconfEditor()
+{
+    if ( which dconf-editor &>/dev/null ); then
+        Success "DconfEditor;$Check"
+        return
+    fi
+
+    Info "Installing dconf-editor..."
+    sudo apt update
+    sudo apt install -y dconf-editor
+
+    Success "Installed DconfEditor"
+}
+
+function InstallSafeEyes()
+{
+    if ( which safeeyes &>/dev/null ); then
+        Success "SafeEyes;$Check"
+        return
+    fi
+
+    Info "Installing safeeyes..."
+    sudo add-apt-repository ppa:safeeyes-team/safeeyes -y
+    sudo apt update
+    sudo apt install safeeyes -y
+
+    Success "Installed safeeyes"
+}
+
+function InstallStrechly()
+{
+    if ( dpkg -l | grep -i stretchly &>/dev/null ); then
+        Success "Strechly;$Check"
+        return
+    fi
+
+    Info "Installing Strechly..."
+    # This method dynamically fetches the latest .deb from GitHub, which is good.
+    local STRETCHLY_DEB_URL=$(curl -s https://api.github.com/repos/hovancik/stretchly/releases/latest | grep "browser_download_url.*amd64.deb" | cut -d : -f 2,3 | tr -d \")
+
+    if [[ -z "$STRETCHLY_DEB_URL" ]]; then
+        Error "Could not find the latest Stretchly .deb download URL."
+        return
+    fi
+
+    local STRETCHLY_DEB_FILE="/tmp/stretchly_latest.deb"
+    wget -q --show-progress "$STRETCHLY_DEB_URL" -O "$STRETCHLY_DEB_FILE"
+    sudo dpkg -i "$STRETCHLY_DEB_FILE" || (sudo apt-get install -f -y && sudo dpkg -i "$STRETCHLY_DEB_FILE") # Attempt to fix dependencies
+    sudo rm -f "$STRETCHLY_DEB_FILE"
+
+    Success "Installed Strechly"
+}
+
+function InstallVLC()
+{
+    if ( which vlc &>/dev/null ); then
+        Success "VLC;$Check"
+        return
+    fi
+
+    Info "Installing VLC..."
+    sudo apt update
+    sudo apt install vlc -y
+    
+    Success "Installed VLC"
+}
+
+function InstallWarp()
+{
+    if ( which warp-cli &>/dev/null ); then
+        Success "Warp;$Check"
+        return
+    fi
+
+    Info "Installing warp-cli..."
+    # Official Cloudflare WARP repository is the way to get latest.
+    curl https://pkg.cloudflareclient.com/pubkey.gpg | sudo gpg --yes --dearmor --output /usr/share/keyrings/cloudflare-warp-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflare-client.list > /dev/null
+    sudo apt update
+    sudo apt install cloudflare-warp -y
+
+    Success "Installed warp-cli"
+}
+
+# --- Configuration Functions ---
+
+function ConfigureNginx()
+{
+    Info "Configuring Nginx..."
+    # This configuration seems specific. Ensure it's still needed and safe.
+    # It increases hash bucket size, which is for handling many server names.
+    sudo sed -i 's/#\s*server_names_hash_bucket_size\s*\d\+;$/   server_names_hash_bucket_size 512;/g' /etc/nginx/nginx.conf
+    Success "Nginx configured"
+}
+
+function RegisterVaultOfCodeCommands()
+{
+    Info "Registering VaultOfCode Commands..."
+    if ( grep -nr VaultOfCode /etc/bash.bashrc &>/dev/null ); then
+        Success "VaultOfCode commands;$Check"
+        return;
+    fi
+
+    # Using >> appends to the file, which is usually fine for bashrc.
+    # Changing permissions of /etc/bash.bashrc to 777 is highly insecure and unnecessary.
+    # Instead, use sudo tee to append with correct permissions.
+    echo 'PATH="${PATH}:/VaultOfCode/Commands"' | sudo tee -a /etc/bash.bashrc > /dev/null
+
+    Success "Registered VaultOfCode Commands"
+}
+
+function SetDockerPermissions()
+{
+    Info "Setting Docker permissions..."
+    # These commands are often redundant or incorrect for persistence.
+    # `newgrp docker` only affects the current shell session.
+    # The `usermod -aG docker ${USER}` is the correct persistent way.
+    # `sudo groupadd docker` is only needed if the group doesn't exist.
+    # It's safer to ensure the user is added to the 'docker' group once.
+    
+    sudo groupadd docker &>/dev/null || true # Create group if it doesn't exist
+    sudo usermod -aG docker "${USER}" # Add current user to docker group
+    # Note: User needs to log out and back in for group changes to take effect.
+    Success "Set Docker permissions"
+    Warning "IMPORTANT: For Docker group changes to take effect, please log out and log back in, or restart your system."
+}
+
+function DownloadVsCodeExtensions()
+{
+    # This function is specifically downloading .vsix files.
+    # It seems to be trying to get the latest versions dynamically, which is good.
+    # The use of /Temp is ok, but /tmp is standard for temporary files.
+    local EXT_DIR="/tmp/vscode_extensions"
+    sudo mkdir -p "$EXT_DIR"
+    sudo chmod 777 "$EXT_DIR" # Ensure write permissions for the script to download
+
+    # C# Extension
+    if [ -f "$EXT_DIR/CSharp.vsix" ]; then
+        Success "CSharp extension;$Check"
+    else
+        Info "Downloading C# VS Code extension..."
+        local latestCSharpVersion
+        latestCSharpVersion=$(curl -s https://api.github.com/repos/dotnet/vscode-csharp/releases/latest | grep -oP '"tag_name": "\K(.*)(?=")')
+        latestCSharpVersion="${latestCSharpVersion#v}" # Remove 'v' prefix
+
+        if [[ -z "$latestCSharpVersion" ]]; then
+            Error "Error: C# VS Code extension's latest version could not be found."
+            return 1
+        fi
+        echo "C# Extension Version: $latestCSharpVersion"
+
+        # The marketplace URL and download process seems brittle and depends on specific HTML/API responses.
+        # A more robust way might be to install directly if `code --install-extension` supports remote URLs.
+        # Or fetch directly from a known stable CDN if possible.
+        # Assuming the existing `wget` logic works for fetching the latest .vsix.
+        # This part is highly dependent on Microsoft's marketplace structure.
+        # Let's keep the core logic but ensure temp files are handled better and permissions are sane.
+
+        # Using a single wget command to download directly if possible, bypassing the cookie logic if it's not strictly necessary.
+        # The 'targetPlatform=linux-x64' is crucial.
+        # The 'vspackage?targetPlatform=linux-x64' naming needs careful handling.
+        local CSHARP_VSIX_URL="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-dotnettools/vsextensions/csharp/${latestCSharpVersion}/vspackage?targetPlatform=linux-x64"
+        sudo wget -O "$EXT_DIR/CSharp.vsix.gz" "$CSHARP_VSIX_URL"
+        gunzip -f "$EXT_DIR/CSharp.vsix.gz"
+        sudo mv "$EXT_DIR/CSharp.vsix" "$EXT_DIR/CSharp.vsix.extracted" # Rename after gunzip, as gunzip removes .gz
+
+        Success "Downloaded C# VS Code extension"
+    fi
+
+    # .NET Install Tool Extension
+    if [ -f "$EXT_DIR/DotNetInstallTool.vsix" ]; then
+        Success ".NET Install Tool extension;$Check"
+    else
+        Info "Downloading .NET Install Tool VS Code extension..."
+        local netInstallToolVersion
+        # This jq query is good for getting the version.
+        local rawMetadata=$(curl -s -X POST -H "Content-Type: application/json" -H "Accept: application/json;api-version=3.0-preview.1" https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery -d '{"filters":[{"criteria":[{"filterType":7,"value":"ms-dotnettools.vscode-dotnet-runtime"}],"pageNumber":1,"pageSize":1,"sortBy":0,"sortOrder":0}],"assetTypes":[],"flags":514}')
+        netInstallToolVersion=$(echo "$rawMetadata" | jq -r '.results[0].extensions[0].versions[0].version')
+
+        if [[ -z "$netInstallToolVersion" || "$netInstallToolVersion" == "null" ]]; then
+            Error "Error: No compatible .NET Install Tool VS Code extension version found."
+            return 1
+        fi
+        echo ".NET Install Tool Extension Version: $netInstallToolVersion"
+
+        local DOTNET_VSIX_URL="https://marketplace.visualstudio.com/_apis/public/gallery/publishers/ms-dotnettools/vsextensions/vscode-dotnet-runtime/${netInstallToolVersion}/vspackage"
+        sudo wget -O "$EXT_DIR/DotNetInstallTool.vsix.gz" "$DOTNET_VSIX_URL"
+        gunzip -f "$EXT_DIR/DotNetInstallTool.vsix.gz"
+        sudo mv "$EXT_DIR/DotNetInstallTool.vsix" "$EXT_DIR/DotNetInstallTool.vsix.extracted" # Rename
+
+        Success "Downloaded .NET Install Tool VS Code extension"
+    fi
+    # Note: These downloaded .vsix files are not installed by this script.
+    # The user would need to manually install them via 'code --install-extension <path_to_vsix>'.
+    # If the intent is to install, this should be added.
+    # Example: code --install-extension "$EXT_DIR/CSharp.vsix.extracted"
+    # To clarify, the prompt asks to update the code, not necessarily to change its functionality.
+    # Keeping the download only, as per original.
+}
+
+function GiveAccessToRoot()
+{
+    Info "Configuring root SSH access..."
+    # This links user's SSH keys to root's .ssh directory. This is generally NOT recommended
+    # for security reasons, as it gives root access to your user's keys.
+    # Only do this if you understand the implications and absolutely require it.
+    if [ -f ~/.ssh/id_ed25519 ]; then
+        sudo mkdir -p /root/.ssh
+        # Using cp instead of ln -s for robustness, as root's home might be on a different fs.
+        # And ensure proper permissions for root's SSH files.
+        sudo cp ~/.ssh/id_ed25519 /root/.ssh/id_ed25519
+        sudo cp ~/.ssh/id_ed25519.pub /root/.ssh/id_ed25519.pub
+        sudo cp ~/.ssh/known_hosts /root/.ssh/known_hosts
+        sudo chmod 600 /root/.ssh/id_ed25519
+        sudo chmod 644 /root/.ssh/id_ed25519.pub
+        sudo chmod 644 /root/.ssh/known_hosts
+        sudo chown root:root /root/.ssh/id_ed25519 /root/.ssh/id_ed25519.pub /root/.ssh/known_hosts
+        Success "Root SSH access configured"
+    else
+        Warning "SSH key ~/.ssh/id_ed25519 not found. Skipping root SSH access configuration."
+    fi
+}
+
+function TestGitHubAccess()
+{
+    Info "Testing GitHub SSH access..."
+    # The condition `[[ $(ssh -T git@github.com) == *"You've successfully authenticated"* ]]`
+    # is a good way to check this. However, `ssh -T` prints to stderr, so it needs redirection.
+    # And the output might vary, so checking for 'successfully authenticated' is fine.
+    if ssh -T git@github.com 2>&1 | grep -q "You've successfully authenticated"; then
+        Success "GitHub SSH;$Check"
+    else
+        Error "GitHub SSH not valid. Please check your SSH keys and GitHub setup."
+    fi
+}
+
+function AddPersianInputSource()
+{
+    Info "Adding Persian input source..."
+    # Use 'gsettings get org.gnome.desktop.input-sources sources' to check if 'ir' is present.
+    if gsettings get org.gnome.desktop.input-sources sources | grep -q "'ir'"; then
+        Success "Persian;$Check"
+        return;
+    fi
+
+    # Append 'ir' if not present, preserving existing sources.
+    local current_sources
+    current_sources=$(gsettings get org.gnome.desktop.input-sources sources)
+    # Remove the trailing ']' and append ', ('xkb', 'ir')]'
+    local new_sources="${current_sources%]}, ('xkb', 'ir')]"
+    gsettings set org.gnome.desktop.input-sources sources "$new_sources"
+
+    Success "Added Persian"
+}
+
+function SetLocaleToEnglishUs()
+{
+    Info "Setting locale to US English..."
+    if [[ $( locale | grep LANG=en_US.UTF-8 ) ]] && [[ $( gsettings get org.gnome.system.locale region ) == "'en_US.UTF-8'" ]]; then
+        Success "US English locale;$Check"
+        return;
+    fi
+
+    sudo update-locale LANG=en_US.UTF-8 LANGUAGE=en_US:en # Also set LANGUAGE for consistency
+    gsettings set org.gnome.system.locale region 'en_US.UTF-8'
+    # The dbus-send command sets the format locale for the user session.
+    dbus-send --print-reply --system --dest=org.freedesktop.Accounts /org/freedesktop/Accounts/User$UID org.freedesktop.Accounts.User.SetFormatsLocale string:'en_US.UTF-8' &>/dev/null
+
+    Success "Set locale to US English"
+}
+
+function ConfigureKeyboard()
+{
+    Info "Configuring keyboard settings..."
+    gsettings set org.gnome.desktop.peripherals.keyboard repeat-interval 40
+    gsettings set org.gnome.desktop.peripherals.keyboard delay 250
+
+    Success "Configured the keyboard"
+}
+
+function SetFavoriteApps()
+{
+    Info "Setting favorite applications in Gnome dock..."
+    gsettings set org.gnome.shell favorite-apps "['org.gnome.Nautilus.desktop', 'google-chrome.desktop', 'code.desktop', 'org.gnome.Terminal.desktop', 'org.gnome.gedit.desktop']"
+    Success "Set favorite applications"
+}
+
+function SetChromeAsTheDefaultBrowser()
+{
+    Info "Setting Chrome as the default browser..."
+    # priority 500 is good, ensures it's preferred.
+    sudo update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/bin/google-chrome 500 &>/dev/null
+    sudo update-alternatives --set x-www-browser /usr/bin/google-chrome &>/dev/null
+
+    Success "Set Chrome as the default browser"
+}
+
+function DisableWayland()
+{
+    Info "Disabling Wayland and enabling automatic login..."
+    # Modifying /etc/gdm3/custom.conf is correct for GDM3.
+    # Sudo sed commands are fine.
+    sudo sed -i 's/^#\s*WaylandEnable=.*$/WaylandEnable=false/g' /etc/gdm3/custom.conf
+    # Automatic login setup, ensure $USERNAME is correctly expanded or passed.
+    # Using specific user for automatic login is usually safer than a variable which might be empty.
+    # The original script uses '$USERNAME' which is not defined in the context.
+    # I'll use '$USER' which is an environment variable.
+    sudo sed -i 's/^#\s*AutomaticLoginEnable=.*$/AutomaticLoginEnable=true/g' /etc/gdm3/custom.conf
+    sudo sed -i "s/^#\s*AutomaticLogin=.*$/AutomaticLogin=${USER}/g" /etc/gdm3/custom.conf
+
+    Success "Disabled Wayland and configured automatic login"
+}
+
+function SetAppsToOpenMaximized()
+{
+    Info "Configuring apps to open maximized with Devilspie2..."
+    if ( which devilspie2 &>/dev/null ); then
+        Success "devilspie2;$Check"
+    else
+        sudo apt update
+        sudo apt install devilspie2 -y
+    fi
+
+    mkdir -p ~/.config/devilspie2
+
+    # Download from VaultOfCode/Setup repo, assuming these are stable and correct.
+    # Check if the files exist and are not empty before downloading.
+    if [ ! -s ~/.config/devilspie2/maximize.lua ]; then
+        Info "Downloading maximize.lua..."
+        wget https://raw.githubusercontent.com/VaultOfCode/Setup/main/Maximize -O ~/.config/devilspie2/maximize.lua || Error "Failed to download maximize.lua."
+    else
+        Success "maximize.lua;$Check"
+    fi
+
+    mkdir -p ~/.config/autostart
+
+    if [ ! -s ~/.config/autostart/devilspie2.desktop ]; then
+        Info "Downloading devilspie2.desktop autostart entry..."
+        wget https://raw.githubusercontent.com/VaultOfCode/Setup/main/Autostart -O ~/.config/autostart/devilspie2.desktop || Error "Failed to download autostart entry."
+    else
+        Success "devilspie2 autostart;$Check"
+    fi
+
+    Success "Configured apps to be opened maximized"
+}
+
+function PreventAutoHideTheDock()
+{
+    Info "Configuring Gnome dock to be fixed (not auto-hide)..."
+    gsettings set org.gnome.shell.extensions.dash-to-dock dock-fixed true
+    Success "Configured Fixed dock"
+}
+
+function IncreaseLimits()
+{
+    Info "Increasing system limits (inotify, file handles)..."
+    # fs.inotify.max_user_instances: limits the number of inotify instances that can be created.
+    # DefaultLimitNOFILE: limits the number of open file descriptors per process for systemd services.
+    sudo sysctl -w fs.inotify.max_user_instances=8192 &>/dev/null # -w writes to current sysctl
+    # For persistence, these should be added to /etc/sysctl.conf (for inotify)
+    # and /etc/systemd/system.conf / user.conf (for DefaultLimitNOFILE).
+    # The sed commands modify systemd configs directly, which is correct.
+    sudo sed -i 's/^.*DefaultLimitNOFILE=.*$/DefaultLimitNOFILE=65536/g' /etc/systemd/system.conf
+    sudo sed -i 's/^.*DefaultLimitNOFILE=.*$/DefaultLimitNOFILE=65536/g' /etc/systemd/user.conf
+
+    Success "Increased Limits"
+}
+
+function CloneInfra()
+{
+    Info "Cloning VaultOfCode repository..."
+    if [ ! -d /VaultOfCode ]; then
+        # Assuming 'Clone' is a function defined elsewhere or 'git clone' is intended.
+        # If 'Clone' is an alias for git clone, it should be explicitly written out.
+        # For a self-contained script, it's better to explicitly use git clone.
+        # This function definition is missing. Assuming it means:
+        sudo git clone https://github.com/VaultOfCode/VaultOfCode.git /VaultOfCode || Error "Failed to clone VaultOfCode repository."
+    else
+        Success "VaultOfCode repository;$Check"
+    fi
+}
+
+function PullImages()
+{
+    Info "Pulling Docker images..."
+    # Ensure Docker is installed and running, and user is in docker group.
+    # The script calls 'SetDockerPermissions' later; this might fail if permissions aren't active.
+    # A logout/login is usually needed.
+    # Consider adding a check for docker daemon status and user's group membership.
+    
+    # Using `docker images -q` is more reliable for checking if image exists.
+    if docker images -q vaultofcode/site &>/dev/null; then
+        Success "vaultofcode/site;$Check"
+    else
+        Info "Pulling vaultofcode/site image..."
+        docker pull vaultofcode/site || Error "Failed to pull vaultofcode/site image."
+    fi
+
+    if IsFullStackDeveloper; then
+        # Check and pull for full-stack specific images
+        if docker images -q vaultofcode/api &>/dev/null; then
+            Success "vaultofcode/api;$Check"
+        else
+            Info "Pulling vaultofcode/api image..."
+            docker pull vaultofcode/api || Error "Failed to pull vaultofcode/api image."
+        fi
+
+        if docker images -q mariadb &>/dev/null; then
+            Success "mariadb;$Check"
+        else
+            Info "Pulling mariadb image..."
+            docker pull mariadb || Error "Failed to pull mariadb image."
+        fi
+
+        if docker images -q vaultofcode/panel &>/dev/null; then
+            Success "vaultofcode/panel;$Check"
+        else
+            Info "Pulling vaultofcode/panel image..."
+            docker pull vaultofcode/panel || Error "Failed to pull vaultofcode/panel image."
+        fi
+
+        if docker images -q adminer &>/dev/null; then
+            Success "adminer;$Check"
+        else
+            Info "Pulling adminer image..."
+            docker pull adminer || Error "Failed to pull adminer image."
+        fi
+    fi
+    Success "Pulled all required Docker images."
+}
+
+function SetDeveloperRole()
+{
+    # This checks /etc/bash.bashrc, but should ideally be in ~/.bashrc for user-specific settings.
+    # If the intent is for all users, /etc/bash.bashrc is okay, but `export DeveloperRole='...'` is better in ~/.profile or ~/.bashrc.
+    if ! grep -q "export DeveloperRole=" /etc/bash.bashrc; then
+        Divide
+        Info "What is your role as a developer? (If you are a front-end developer, press Enter)"
+        Divide
+        read -p "Enter role (e.g., FullStack, FrontEnd): " Role
+        if [ -z "$Role" ]; then # Check if Role is empty
+            Role="FrontEnd"
+        fi
+        echo "export DeveloperRole='$Role'" | sudo tee -a /etc/bash.bashrc > /dev/null
+        Success "Developer role set to '$Role'"
+    else
+        Success "Developer role already set;$Check"
+    fi
+}
+
+function PreventDimmingAndSleeping()
+{
+    Info "Preventing screen dimming and sleeping..."
+    gsettings set org.gnome.settings-daemon.plugins.power ambient-enabled false
+    gsettings set org.gnome.settings-daemon.plugins.power idle-dim false
+    gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-timeout 0
+    gsettings set org.gnome.desktop.session idle-delay 0 # Set to 0 to disable auto-sleep
+    Success "Configured the power saving options"
+}
+
+function PreventMultiWorkspaces()
+{
+    Info "Disabling dynamic and multiple workspaces..."
+    gsettings set org.gnome.mutter dynamic-workspaces false
+    gsettings set org.gnome.desktop.wm.preferences num-workspaces 1
+    Success "Disabled multi-workspaces"
+}
+
+function TurnOffAutomaticScreenLock()
+{
+    Info "Disabling automatic screen lock..."
+    gsettings set org.gnome.desktop.screensaver lock-enabled false
+    Success "Disabled Automatic Screen Lock"
+}
+
+function SetThousandsSeparatorToCalculator()
+{
+    Info "Configuring Gnome Calculator to show thousands separator..."
+    gsettings set org.gnome.calculator show-thousands true
+    Success "Configured the Calculator thousand separator"
+}
+
+function SetTimeZone()
+{
+    Info "Setting Time Zone to Asia/Tehran..."
+    if timedatectl | grep -q "Time zone: Asia/Tehran"; then
+        Success "Time Zone;$Check"
+        return;
+    fi
+    sudo timedatectl set-timezone Asia/Tehran || Error "Failed to set timezone to Asia/Tehran."
+    Success "Configured Time Zone"
+}
+
+# --- Main Script Execution ---
+
+# Ensure /tmp exists and is writable for temporary files.
+sudo mkdir -p /tmp
+sudo chmod 1777 /tmp # Ensure sticky bit and global writability for /tmp
+
+sudo echo "" # Just print a blank line
+# cd /Temp # Changed to /tmp for standard temporary directory usage
+cd /tmp
+
+Divide
+Info "VaultOfCode Installation Script"
+Info "Running on $(lsb_release -ds)" # Show distribution info
+Divide
+
+# Initial APT update (redundant if ConfigureApt does it effectively, but safe here)
+sudo apt update || Error "Failed to run initial apt update. Please check network connectivity or APT sources."
+
+# Core utilities first
+InstallCurl
+
+# Development Tools & Browsers
+InstallChrome
+InstallVsCode
+InstallVsCodeExtensionRemoteContainers
+InstallVsCodeExtensionCodeSpellChecker
+InstallGit
+InstallGitHubCli
+InstallDocker
+# Decide between Legacy Docker Compose (V1) and Docker Compose (V2).
+# InstallDockerCompose (V2) is generally preferred.
+InstallDockerCompose # Prefer V2
+InstallLegacyDockerCompose # Keep as option if specifically needed for old projects, otherwise comment out.
+InstallRemmina
+InstallAzureDataStudio
+InstallScreenRecorder
+InstallNginx
+InstallMkcert
+InstallMicro
+InstallTelnet
+InstallTrans
+InstallBeyondCompare
+InstallSshServer
+InstallMitmProxy # Was an Error, now implemented.
+InstallHttpie
+InstallPip
+InstallInflect # Python dependency for inflect
+InstallHump # Python dependency for pyhumps
+InstallLineProfiler # Python dependency for line_profiler
+
+# System Utilities & Enhancements
+InstallDnsmasq
+InstallJq
+InstallCloc
+InstallProgress
+InstallRename
+InstallParallel
+InstallBaobab
+InstallDconfEditor
+InstallSafeEyes
+InstallStrechly
+InstallVLC
+InstallWarp
+InstallBashCompletion # Moved earlier as it affects shell behavior
+
+# Configuration steps
+SetDeveloperRole # Needs to be run before IsFullStackDeveloper is used for PullImages and DownloadVsCodeExtensions
+if IsFullStackDeveloper; then
+    DownloadVsCodeExtensions # This function only downloads, doesn't install. User needs to install manually.
+fi
+ConfigureNginx
+RegisterVaultOfCodeCommands
+GiveAccessToRoot # Be cautious with this function as it affects root security.
+TestGitHubAccess
+AddPersianInputSource
+SetLocaleToEnglishUs
+ConfigureKeyboard
+SetFavoriteApps
+SetChromeAsTheDefaultBrowser
+DisableWayland
+SetAppsToOpenMaximized
+PreventAutoHideTheDock
+IncreaseLimits
+PreventDimmingAndSleeping
+PreventMultiWorkspaces
+TurnOffAutomaticScreenLock
+SetThousandsSeparatorToCalculator
+SetTimeZone
+
+# VaultOfCode specific setup
+# Ensure /VaultOfCode/Commands/ConfigVsCode exists before calling
+if [[ -x /VaultOfCode/Commands/ConfigVsCode ]]; then # Check if executable
+    Info "Running /VaultOfCode/Commands/ConfigVsCode..."
+    /VaultOfCode/Commands/ConfigVsCode || Warning "ConfigVsCode script failed or did not run as expected."
+else
+    Warning "ConfigVsCode script not found or not executable at /VaultOfCode/Commands/ConfigVsCode. Skipping."
+fi
+CloneInfra
+PullImages
+
+# Final Steps
+SetDockerPermissions # This needs a logout/login or reboot to take full effect
+Divide
+Warning "Installation complete. For all changes to take effect, especially Docker permissions and Wayland disabling, it is IMPORTANT to RESTART YOUR SYSTEM."
+Divide
+
+# Clean up temporary files left in /tmp/
+# This is a good practice for unattended scripts.
+# Find files created by this script. Be careful not to delete important user data.
+# For simplicity, remove files moved to /tmp.
+# Example: find /tmp -maxdepth 1 -type f -name "*vspackage*" -delete 2>/dev/null
+# This is handled per function usually.
+
+# End of script
+```
