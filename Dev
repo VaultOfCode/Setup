@@ -66,6 +66,20 @@ function InstallCurl()
     Success "Installed curl"
 }
 
+function InstallTree()
+{
+    if (which tree 1>/dev/null ); then
+        Success "tree:$Check"
+        return
+    fi
+
+    Info "Installing tree ..."
+
+    sudo apt install tree -y
+
+    Success "Installed tree"
+}
+
 function InstallChrome() {
 
     if ( which google-chrome 1>/dev/null ); then
@@ -1003,6 +1017,7 @@ Divide
 
 ConfigureApt
 InstallCurl
+InstallTree
 InstallChrome
 InstallVsCode
 InstallVsCodeExtensionRemoteContainers
