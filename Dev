@@ -89,8 +89,12 @@ function InstallChrome() {
 
     Info "Installing Google Chrome ..."
 
-    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo tee /usr/share/keyrings/google-chrome.gpg > /dev/null
-    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main' | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
+    # Download and install the GPG key in the correct format
+    curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
+
+    # Add the repository with the correct signed-by option
+    echo 'deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main' | sudo tee /etc/apt/sources.list.d/google-chrome.list > /dev/null
+
     sudo apt-get update
     sudo apt-get install -y google-chrome-stable
 
