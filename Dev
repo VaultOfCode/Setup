@@ -148,6 +148,21 @@ function InstallVsCodeExtensionCodeSpellChecker()
     Success "Installed Code Spell Checker Extension"
 }
 
+function InstallVsCodeExtensionClaude()
+{
+    if code --list-extensions | grep -q 'anthropic.claude-code'; then
+        code --install-extension anthropic.claude-code --force 2>&1 >/dev/null
+        Success "Claude Extension;$Check"
+        return
+    fi
+
+    Info "Installing Claude Extension..."
+
+    code --install-extension anthropic.claude-code
+
+    Success "Installed Claude Extension"
+}
+
 function InstallRemmina()
 {
     if ( which remmina 1>/dev/null ); then
@@ -1022,6 +1037,7 @@ InstallChrome
 InstallVsCode
 InstallVsCodeExtensionRemoteContainers
 InstallVsCodeExtensionCodeSpellChecker
+InstallVsCodeExtensionClaude
 InstallRemmina
 InstallGit
 InstallGitHubCli
