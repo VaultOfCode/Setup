@@ -1103,7 +1103,7 @@ DisableWayland
 SetAppsToOpenMaximized
 PreventAutoHideTheDock
 IncreaseLimits
-PreventDimmingAndSleeping
+# PreventDimmingAndSleeping
 # PreventMultiWorkspaces
 RestoreMultiWorkspaces
 TurnOffAutomaticScreenLock
