@@ -1004,6 +1004,13 @@ function PreventMultiWorkspaces()
     Success "Disabled multi-workspaces"
 }
 
+function RestoreMultiWorkspaces()
+{
+    gsettings set org.gnome.mutter dynamic-workspaces true
+    gsettings set org.gnome.desktop.wm.preferences num-workspaces 4
+    Success "Restored multi-workspaces to Ubuntu defaults"
+}
+
 function TurnOffAutomaticScreenLock()
 {
     gsettings set org.gnome.desktop.screensaver lock-enabled false
@@ -1097,7 +1104,7 @@ SetAppsToOpenMaximized
 PreventAutoHideTheDock
 IncreaseLimits
 PreventDimmingAndSleeping
-PreventMultiWorkspaces
+# PreventMultiWorkspaces
 TurnOffAutomaticScreenLock
 SetThousandsSeparatorToCalculator
 SetTimeZone
