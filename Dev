@@ -1107,7 +1107,7 @@ PreventDimmingAndSleeping
 # PreventMultiWorkspaces
 TurnOffAutomaticScreenLock
 SetThousandsSeparatorToCalculator
-SetTimeZone
+# SetTimeZone
 if [[ -d /VaultOfCode/Commands/ConfigVsCode ]]; then
     /VaultOfCode/Commands/ConfigVsCode
 fi
