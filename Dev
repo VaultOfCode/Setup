@@ -1011,7 +1011,7 @@ function RestoreMultiWorkspaces()
     Success "Restored multi-workspaces to Ubuntu defaults"
 }
 
-function TurnOffAutomaticScreenLock()
+# function TurnOffAutomaticScreenLock()
 {
     gsettings set org.gnome.desktop.screensaver lock-enabled false
     Success "Disabled Automatic Screen Lock"
@@ -1106,7 +1106,7 @@ IncreaseLimits
 # PreventDimmingAndSleeping
 # PreventMultiWorkspaces
 RestoreMultiWorkspaces
-TurnOffAutomaticScreenLock
+# TurnOffAutomaticScreenLock
 SetThousandsSeparatorToCalculator
 # SetTimeZone
 if [[ -d /VaultOfCode/Commands/ConfigVsCode ]]; then
