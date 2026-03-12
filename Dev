@@ -1105,6 +1105,7 @@ PreventAutoHideTheDock
 IncreaseLimits
 PreventDimmingAndSleeping
 # PreventMultiWorkspaces
+RestoreMultiWorkspaces
 TurnOffAutomaticScreenLock
 SetThousandsSeparatorToCalculator
 # SetTimeZone
